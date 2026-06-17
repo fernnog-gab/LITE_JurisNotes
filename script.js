@@ -21,17 +21,19 @@ const btnProcessImagesLater = document.getElementById('btn-process-images-later'
 const btnDownloadZip = document.getElementById('btn-download-zip');
 const btnDownloadTxtAgain = document.getElementById('btn-download-txt-again');
 
-// Eventos de Drag & Drop e Clique
+// ============================================================================
+// Eventos de Drag & Drop e Clique (Atualizado para múltiplos arquivos)
+// ============================================================================
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
 dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('dragover');
-    if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
 });
 fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    if (e.target.files.length > 0) handleFiles(e.target.files);
 });
 
 // ============================================================================
@@ -104,25 +106,18 @@ function updateStatus(message, isError) {
 }
 
 // ============================================================================
-// State Machine (Máquina de Estados)
+// State Machine (Atualizada para Lote de Arquivos)
 // ============================================================================
 let AppState = {
-    pdfDoc: null,
-    baseFileName: '',
-    fullText: '',
-    imageQueue: [], // Mapa do tesouro: { pageNum, imgId, imageName }
+    files: [],           // Fila de arquivos para processamento
+    processedFiles: [],  // Lista de arquivos processados com metadados para as imagens { baseFileName, fullText, imageQueue, arrayBuffer }
     isFastMode: true
 };
 
 function resetState() {
-    if (AppState.pdfDoc) {
-        AppState.pdfDoc.destroy(); // Libera Worker e Previne Memory Leak
-    }
     AppState = { 
-        pdfDoc: null, 
-        baseFileName: '', 
-        fullText: '', 
-        imageQueue: [], 
+        files: [], 
+        processedFiles: [], 
         isFastMode: fastModeCheckbox.checked 
     };
     
@@ -133,145 +128,179 @@ function resetState() {
     actionFeedbackMsg.textContent = '';
 }
 
-// ============================================================================
-// Core Logic: Entry Point
-// ============================================================================
-async function handleFile(file) {
-    if (file.type !== "application/pdf") { 
-        updateStatus("Por favor, envie um arquivo PDF válido.", true); 
-        return; 
-    }
-    
-    resetState();
-    AppState.baseFileName = file.name.replace(/\.[^/.]+$/, "");
-    AppState.isFastMode = fastModeCheckbox.checked;
-    
-    updateStatus("Lendo estrutura do processo...", false);
-    progressContainer.style.display = 'block';
-    progressBar.style.width = '5%';
-
-    try {
-        const arrayBuffer = await file.arrayBuffer();
-        AppState.pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        
-        await phaseOneTextExtraction();
-
-    } catch (error) {
-        console.error("Erro fatal:", error);
-        updateStatus("Erro crítico na leitura do arquivo.", true);
-    }
-}
-
-// ============================================================================
-// FASE 1: Apenas texto e mapeamento de imagens (Ultra Rápido)
-// ============================================================================
-async function phaseOneTextExtraction() {
-    const sanitizationRules = buildSanitizationRules();
-    let textResult = "";
-
-    for (let pageNum = 1; pageNum <= AppState.pdfDoc.numPages; pageNum++) {
-        updateStatus(`Lendo Texto e Mapeando Imagens: Pág ${pageNum} de ${AppState.pdfDoc.numPages}...`, false);
-        progressBar.style.width = `${5 + (pageNum / AppState.pdfDoc.numPages) * 45}%`;
-        await yieldToMain();
-
-        let pageText = "";
-        try {
-            const page = await AppState.pdfDoc.getPage(pageNum);
-            
-            // 1. Extração de Texto
-            const textContent = await withTimeout(page.getTextContent(), 5000, "Timeout texto");
-            pageText = textContent.items.map(item => item.str).join(' ');
-            pageText = sanitizePageText(pageText, sanitizationRules);
-
-            // 2. Mapeamento de Imagens
-            const operatorList = await withTimeout(page.getOperatorList(), 5000, "Timeout operadores");
-            const OPS = pdfjsLib.OPS;
-            let imageCounterPage = 1;
-
-            for (let i = 0; i < operatorList.fnArray.length; i++) {
-                const fn = operatorList.fnArray[i];
-                if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
-                    const imgId = operatorList.argsArray[i][0];
-                    const imageName = `${AppState.baseFileName}_PAG_${String(pageNum).padStart(2, '0')}_IMG_${String(imageCounterPage).padStart(2, '0')}.jpg`;
-                    
-                    pageText += `\n\n[IMAGEM EXTRAÍDA: ${imageName}]\n\n`;
-                    
-                    // Alimenta o Mapa do Tesouro (NÃO renderiza agora)
-                    AppState.imageQueue.push({ pageNum, imgId, imageName });
-                    imageCounterPage++;
-                }
-            }
-            // Garante o destrancamento da memória da página no Loop
-            page.cleanup(); 
-        } catch (err) {
-            console.warn(`Erro na Pág ${pageNum}.`, err);
-        }
-        textResult += `--- INÍCIO DA PÁGINA ${pageNum} ---\n${pageText.trim()}\n\n`;
-    }
-
-    AppState.fullText = textResult;
-    triggerTxtDownload();
-
-    // ==========================================
-    // Roteamento baseado no Toggle
-    // ==========================================
-    if (textOnlyToggle.checked) {
-        // Pausa de fluxo. UX: Pergunta se quer as imagens depois.
-        progressBar.style.width = '100%';
-        progressContainer.style.display = 'none';
-        
-        btnDownloadTxtAgain.style.display = 'inline-block';
-        btnDownloadTxtAgain.onclick = triggerTxtDownload;
-
-        if (AppState.imageQueue.length > 0) {
-            updateStatus("Extração de texto concluída instantaneamente!", false);
-            actionFeedbackMsg.textContent = `${AppState.imageQueue.length} imagens mapeadas. Deseja processá-las agora?`;
-            btnProcessImagesLater.style.display = 'inline-block';
-            downloadActionArea.style.display = 'block';
-            
-            // Atrela a Etapa 2 ao botão de continuação
-            btnProcessImagesLater.onclick = async () => {
-                btnProcessImagesLater.style.display = 'none';
-                btnDownloadTxtAgain.style.display = 'none';
-                actionFeedbackMsg.textContent = '';
-                await phaseTwoImageExtraction();
-            };
-        } else {
-            updateStatus("Processo finalizado. Nenhuma imagem encontrada no PDF.", false);
-            downloadActionArea.style.display = 'block';
-        }
-    } else {
-        // Fluxo contínuo (Modo Rápido Desligado)
-        await phaseTwoImageExtraction();
-    }
-}
-
-function triggerTxtDownload() {
-    const txtBlob = new Blob([AppState.fullText], { type: "text/plain;charset=utf-8" });
+// Helper para acionar download individual de arquivo de texto
+function triggerIndividualTxtDownload(fileName, textContent) {
+    const txtBlob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
     const txtLink = document.createElement("a");
     txtLink.href = URL.createObjectURL(txtBlob);
-    txtLink.download = `${AppState.baseFileName}_transcrito.txt`;
+    txtLink.download = `${fileName}_transcrito.txt`;
     txtLink.click();
 }
 
 // ============================================================================
-// FASE 2: Processamento exclusivo das imagens mapeadas usando cache
+// Core Logic: Entrada de Múltiplos Arquivos
 // ============================================================================
-async function phaseTwoImageExtraction() {
-    // Fail-safe caso passe direto pelo toggle e não haja imagens
-    if (AppState.imageQueue.length === 0) {
-        updateStatus(`Pronto! Processo finalizado (sem imagens detectadas).`, false);
+async function handleFiles(fileList) {
+    const files = Array.from(fileList).filter(f => f.type === "application/pdf");
+    if (files.length === 0) { 
+        updateStatus("Por favor, envie arquivos PDF válidos.", true); 
+        return; 
+    }
+    
+    resetState();
+    AppState.files = files;
+    AppState.isFastMode = fastModeCheckbox.checked;
+    
+    updateStatus(`Iniciando lote de ${files.length} arquivo(s)...`, false);
+    progressContainer.style.display = 'block';
+    progressBar.style.width = '2%';
+
+    try {
+        await processBatchPhaseOne();
+    } catch (error) {
+        console.error("Erro fatal no lote:", error);
+        updateStatus("Erro crítico na leitura dos arquivos em lote.", true);
+    }
+}
+
+// ============================================================================
+// FASE 1: Extração de Texto Individual por Arquivo (Sequencial para Performance)
+// ============================================================================
+async function processBatchPhaseOne() {
+    const sanitizationRules = buildSanitizationRules();
+
+    for (let i = 0; i < AppState.files.length; i++) {
+        const file = AppState.files[i];
+        const baseFileName = file.name.replace(/\.[^/.]+$/, "");
+        
+        updateStatus(`[${i + 1}/${AppState.files.length}] Lendo: ${file.name}...`, false);
+        await yieldToMain();
+
+        let pdfDoc = null;
+        let textResult = "";
+        const imageQueue = [];
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const numPages = pdfDoc.numPages;
+
+            for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                // Cálculo de progresso proporcional ao lote e às páginas do arquivo atual
+                const fileProgress = (pageNum / numPages);
+                const totalProgress = ((i + fileProgress) / AppState.files.length) * 50;
+                progressBar.style.width = `${totalProgress}%`;
+                updateStatus(`[${i + 1}/${AppState.files.length}] ${baseFileName} - Pág ${pageNum}/${numPages}`, false);
+                await yieldToMain();
+
+                let pageText = "";
+                try {
+                    const page = await pdfDoc.getPage(pageNum);
+                    
+                    // 1. Extração de Texto
+                    const textContent = await withTimeout(page.getTextContent(), 5000, "Timeout texto");
+                    pageText = textContent.items.map(item => item.str).join(' ');
+                    pageText = sanitizePageText(pageText, sanitizationRules);
+
+                    // 2. Mapeamento de Imagens
+                    const operatorList = await withTimeout(page.getOperatorList(), 5000, "Timeout operadores");
+                    const OPS = pdfjsLib.OPS;
+                    let imageCounterPage = 1;
+
+                    for (let j = 0; j < operatorList.fnArray.length; j++) {
+                        const fn = operatorList.fnArray[j];
+                        if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
+                            const imgId = operatorList.argsArray[j][0];
+                            const imageName = `${baseFileName}_PAG_${String(pageNum).padStart(2, '0')}_IMG_${String(imageCounterPage).padStart(2, '0')}.jpg`;
+                            
+                            pageText += `\n\n[IMAGEM EXTRAÍDA: ${imageName}]\n\n`;
+                            imageQueue.push({ pageNum, imgId, imageName });
+                            imageCounterPage++;
+                        }
+                    }
+                    page.cleanup(); 
+                } catch (err) {
+                    console.warn(`Erro na Pág ${pageNum} do arquivo ${file.name}.`, err);
+                }
+                textResult += `--- INÍCIO DA PÁGINA ${pageNum} ---\n${pageText.trim()}\n\n`;
+            }
+
+            // Armazena no estado do lote para a posterior etapa visual
+            AppState.processedFiles.push({
+                baseFileName,
+                fullText: textResult,
+                imageQueue,
+                arrayBuffer
+            });
+
+            // Dispara imediatamente o download do TXT específico deste arquivo
+            triggerIndividualTxtDownload(baseFileName, textResult);
+
+        } catch (err) {
+            console.error(`Erro ao carregar o arquivo ${file.name}:`, err);
+        } finally {
+            if (pdfDoc) {
+                await pdfDoc.destroy(); // Garante liberação imediata de memória
+            }
+        }
+    }
+
+    const totalImagesMapped = AppState.processedFiles.reduce((sum, f) => sum + f.imageQueue.length, 0);
+
+    // Verificação de fluxo
+    if (textOnlyToggle.checked) {
         progressBar.style.width = '100%';
-        setTimeout(() => { progressContainer.style.display = 'none'; progressBar.style.width = '0%'; }, 3000);
+        progressContainer.style.display = 'none';
+        
+        btnDownloadTxtAgain.style.display = 'inline-block';
+        btnDownloadTxtAgain.onclick = () => {
+            AppState.processedFiles.forEach(f => triggerIndividualTxtDownload(f.baseFileName, f.fullText));
+        };
+
+        if (totalImagesMapped > 0) {
+            updateStatus(`Extração de texto concluída para todos os ${AppState.files.length} arquivos!`, false);
+            actionFeedbackMsg.textContent = `${totalImagesMapped} imagens mapeadas no total. Deseja processá-las agora?`;
+            btnProcessImagesLater.style.display = 'inline-block';
+            downloadActionArea.style.display = 'block';
+            
+            btnProcessImagesLater.onclick = async () => {
+                btnProcessImagesLater.style.display = 'none';
+                btnDownloadTxtAgain.style.display = 'none';
+                actionFeedbackMsg.textContent = '';
+                await processBatchPhaseTwo();
+            };
+        } else {
+            updateStatus("Processo finalizado. Nenhuma imagem encontrada nos arquivos do lote.", false);
+            downloadActionArea.style.display = 'block';
+        }
+    } else {
+        await processBatchPhaseTwo();
+    }
+}
+
+// ============================================================================
+// FASE 2: Processamento das Imagens do Lote (Compilação em ZIP único)
+// ============================================================================
+async function processBatchPhaseTwo() {
+    const totalImages = AppState.processedFiles.reduce((sum, f) => sum + f.imageQueue.length, 0);
+    
+    if (totalImages === 0) {
+        updateStatus(`Pronto! Processo finalizado (sem imagens detectadas nos arquivos).`, false);
+        progressBar.style.width = '100%';
+        setTimeout(() => { progressContainer.style.display = 'none'; }, 3000);
         return;
     }
 
-    updateStatus(`Iniciando processamento gráfico de ${AppState.imageQueue.length} imagem(ns)...`, false);
+    updateStatus(`Iniciando processamento gráfico de ${totalImages} imagens no lote...`, false);
     progressContainer.style.display = 'block';
     downloadActionArea.style.display = 'none'; 
     
     const zip = new JSZip();
-    zip.file(`${AppState.baseFileName}_transcrito.txt`, AppState.fullText);
+    
+    // Insere também todos os TXTs individuais no ZIP para conveniência
+    AppState.processedFiles.forEach(f => {
+        zip.file(`${f.baseFileName}_transcrito.txt`, f.fullText);
+    });
     
     const imageQuality = AppState.isFastMode ? 0.60 : 0.85;
     const renderCanvas = document.createElement('canvas');
@@ -279,65 +308,74 @@ async function phaseTwoImageExtraction() {
     const extractCanvas = document.createElement('canvas');
     const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
 
-    // Agrupa as coordenadas por página para não recarregar a mesma página no cache
-    const queueByPage = AppState.imageQueue.reduce((acc, item) => {
-        if (!acc[item.pageNum]) acc[item.pageNum] = [];
-        acc[item.pageNum].push(item);
-        return acc;
-    }, {});
-
     let processedCount = 0;
-    const totalImages = AppState.imageQueue.length;
 
-    for (const [pageNumStr, imagesArr] of Object.entries(queueByPage)) {
-        const pageNum = parseInt(pageNumStr);
+    for (const fileEntry of AppState.processedFiles) {
+        if (fileEntry.imageQueue.length === 0) continue;
+
+        let pdfDoc = null;
         try {
-            const page = await AppState.pdfDoc.getPage(pageNum);
-            // Reconstrução rápida do cache de XObjects via operatorList nativo
-            await page.getOperatorList(); 
+            // Recarrega o PDF sob demanda para processamento gráfico
+            pdfDoc = await pdfjsLib.getDocument({ data: fileEntry.arrayBuffer }).promise;
+            
+            const queueByPage = fileEntry.imageQueue.reduce((acc, item) => {
+                if (!acc[item.pageNum]) acc[item.pageNum] = [];
+                acc[item.pageNum].push(item);
+                return acc;
+            }, {});
 
-            for (const item of imagesArr) {
-                updateStatus(`Extraindo imagem ${processedCount + 1} de ${totalImages}...`, false);
-                progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
-                await yieldToMain();
+            for (const [pageNumStr, imagesArr] of Object.entries(queueByPage)) {
+                const pageNum = parseInt(pageNumStr);
+                const page = await pdfDoc.getPage(pageNum);
+                await page.getOperatorList(); 
 
-                try {
-                    const img = await new Promise((resolve) => page.objs.get(item.imgId, resolve));
-                    if (img) {
-                        let drawWidth = img.width || 800;
-                        let drawHeight = img.height || 800;
-                        const MAX_SIZE = AppState.isFastMode ? 1000 : 1600;
+                for (const item of imagesArr) {
+                    updateStatus(`Extraindo imagem ${processedCount + 1} de ${totalImages} do lote...`, false);
+                    progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
+                    await yieldToMain();
 
-                        if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
-                            const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
-                            drawWidth = Math.round(drawWidth * ratio);
-                            drawHeight = Math.round(drawHeight * ratio);
+                    try {
+                        const img = await new Promise((resolve) => page.objs.get(item.imgId, resolve));
+                        if (img) {
+                            let drawWidth = img.width || 800;
+                            let drawHeight = img.height || 800;
+                            const MAX_SIZE = AppState.isFastMode ? 1000 : 1600;
+
+                            if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
+                                const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
+                                drawWidth = Math.round(drawWidth * ratio);
+                                drawHeight = Math.round(drawHeight * ratio);
+                            }
+
+                            renderCanvas.width = drawWidth; 
+                            renderCanvas.height = drawHeight;
+                            
+                            if (img.bitmap) {
+                                renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
+                            } else if (img.data) {
+                                extractCanvas.width = img.width; 
+                                extractCanvas.height = img.height;
+                                const safePixels = normalizeImageData(img.data, img.width, img.height);
+                                extractCtx.putImageData(new ImageData(safePixels, img.width, img.height), 0, 0);
+                                renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
+                            }
+
+                            const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
+                            zip.file(item.imageName, blob);
                         }
-
-                        renderCanvas.width = drawWidth; 
-                        renderCanvas.height = drawHeight;
-                        
-                        if (img.bitmap) {
-                            renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
-                        } else if (img.data) {
-                            extractCanvas.width = img.width; 
-                            extractCanvas.height = img.height;
-                            const safePixels = normalizeImageData(img.data, img.width, img.height);
-                            extractCtx.putImageData(new ImageData(safePixels, img.width, img.height), 0, 0);
-                            renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
-                        }
-
-                        const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
-                        zip.file(item.imageName, blob);
+                    } catch (imgErr) {
+                        console.warn(`Erro na extração de ${item.imageName}`, imgErr);
                     }
-                } catch (imgErr) {
-                    console.warn(`Erro isolado na imagem ${item.imageName}`, imgErr);
+                    processedCount++;
                 }
-                processedCount++;
+                page.cleanup();
             }
-            page.cleanup();
-        } catch (pageErr) {
-            console.error(`Erro ao carregar página ${pageNum} na Etapa 2`, pageErr);
+        } catch (err) {
+            console.error(`Erro ao carregar renderizações para ${fileEntry.baseFileName}`, err);
+        } finally {
+            if (pdfDoc) {
+                await pdfDoc.destroy();
+            }
         }
     }
 
@@ -349,11 +387,10 @@ async function phaseTwoImageExtraction() {
         }
     });
     
-    // UI Final
     progressBar.style.width = '100%';
     setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
     
-    actionFeedbackMsg.textContent = "Processamento finalizado com sucesso!";
+    actionFeedbackMsg.textContent = "Processamento em lote concluído com sucesso!";
     btnDownloadZip.style.display = 'inline-block';
     btnDownloadTxtAgain.style.display = 'inline-block';
     downloadActionArea.style.display = 'block';
@@ -361,7 +398,7 @@ async function phaseTwoImageExtraction() {
     btnDownloadZip.onclick = () => {
         const zipLink = document.createElement("a");
         zipLink.href = URL.createObjectURL(zipBlob);
-        zipLink.download = `${AppState.baseFileName}_Extraido.zip`;
+        zipLink.download = `Lote_Processado_${AppState.files.length}_PDFs.zip`;
         zipLink.click();
     };
 }
