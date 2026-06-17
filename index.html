@@ -12,7 +12,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-    <!-- Chamada para os novos arquivos separados -->
     <link rel="stylesheet" href="style.css">
     <script src="script.js" defer></script>
 </head>
@@ -37,30 +36,36 @@
     <div class="config-panel">
         <div class="config-title">Inteligência de Limpeza e Performance</div>
     
-    <div class="config-group">
-        <label class="checkbox-label">
-            <input type="checkbox" id="split-download" checked>
-            Separar downloads: Liberar texto rápido, processar imagens em segundo plano
-        </label>
-    </div>
-
-    <div class="config-group" style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px dashed var(--border-color);">
+        <div class="config-group" style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px dashed var(--border-color);">
+            <div class="toggle-container">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="text-only-toggle" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+                <div class="toggle-label-content">
+                    <strong>Modo Rápido (Priorizar Texto)</strong>
+                    <p>Baixa o TXT em segundos mantendo as tags visuais. Permite extrair as imagens posteriormente com 1 clique.</p>
+                </div>
+            </div>
+        </div>
+    
+        <div class="config-group">
             <label class="checkbox-label" style="color: var(--primary-color); font-weight: 600;">
                 <input type="checkbox" id="fast-mode" checked>
-                ⚡ Ativar Modo Turbo (Extração super-rápida, arquivo ZIP levemente maior)
+                ⚡ Ativar Modo Turbo (Extração visual mais rápida, ZIP levemente maior)
             </label>
         </div>
         
         <div class="config-group">
             <label class="checkbox-label">
                 <input type="checkbox" id="remove-signatures" checked>
-                Excluir automaticamente assinaturas eletrônicas padrão do PJe
+                Excluir assinaturas eletrônicas padrão do PJe
             </label>
         </div>
         
         <div class="config-group">
             <label for="custom-footers" class="textarea-label">
-                Excluir rodapés e termos repetitivos (separe múltiplos blocos usando <code>---</code>):
+                Excluir rodapés e termos repetitivos (separe por <code>---</code>):
             </label>
             <textarea id="custom-footers" class="custom-textarea" placeholder="Exemplo:&#10;Este documento é cópia do original...&#10;---&#10;Firmado por assinatura eletrônica..."></textarea>
         </div>
@@ -72,7 +77,10 @@
     </div>
 
     <div id="download-action-area" style="display: none; text-align: center; margin-top: 20px;">
-        <button id="btn-download-zip" class="btn-primary">Baixar ZIP de Imagens</button>
+        <p id="action-feedback-msg" style="font-size: 14px; margin-bottom: 12px; color: var(--primary-color); font-weight: 500;"></p>
+        <button id="btn-download-txt-again" class="btn-secondary" style="display: none; margin-right: 10px;">Re-baixar TXT</button>
+        <button id="btn-process-images-later" class="btn-primary" style="display: none;">Extrair e Baixar Imagens (ZIP)</button>
+        <button id="btn-download-zip" class="btn-primary" style="display: none;">Baixar ZIP Final</button>
     </div>
 </div>
 

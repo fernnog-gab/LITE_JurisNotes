@@ -1,20 +1,27 @@
 // Configuração do PDF.js Web Worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
+// DOM Elements: Básicos
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const statusArea = document.getElementById('status-area');
 const progressContainer = document.getElementById('progress-container');
 const progressBar = document.getElementById('progress-bar');
 
+// DOM Elements: Configuração
 const fastModeCheckbox = document.getElementById('fast-mode');
 const removeSignaturesCheckbox = document.getElementById('remove-signatures');
 const customFootersTextarea = document.getElementById('custom-footers');
+const textOnlyToggle = document.getElementById('text-only-toggle');
 
-const splitDownloadCheckbox = document.getElementById('split-download');
+// DOM Elements: Ações / UI
 const downloadActionArea = document.getElementById('download-action-area');
+const actionFeedbackMsg = document.getElementById('action-feedback-msg');
+const btnProcessImagesLater = document.getElementById('btn-process-images-later');
 const btnDownloadZip = document.getElementById('btn-download-zip');
+const btnDownloadTxtAgain = document.getElementById('btn-download-txt-again');
 
+// Eventos de Drag & Drop e Clique
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
@@ -27,6 +34,9 @@ fileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) handleFile(e.target.files[0]);
 });
 
+// ============================================================================
+// Helpers
+// ============================================================================
 const withTimeout = (promise, ms, errorMsg) => {
     let timer;
     const timeoutPromise = new Promise((_, reject) => {
@@ -88,206 +98,270 @@ function normalizeImageData(rawData, width, height) {
     return normalized;
 }
 
-async function handleFile(file) {
-    if (file.type !== "application/pdf") {
-        updateStatus("Por favor, envie um arquivo PDF válido.", true);
-        return;
-    }
-
-    const baseFileName = file.name.replace(/\.[^/.]+$/, "");
-    downloadActionArea.style.display = 'none';
-    updateStatus("Iniciando processamento...", false);
-    progressContainer.style.display = 'block';
-    progressBar.style.width = '2%';
-
-    const sanitizationRules = buildSanitizationRules();
-    const isFastMode = fastModeCheckbox.checked;
-    const isSplitMode = splitDownloadCheckbox ? splitDownloadCheckbox.checked : true;
-    const imageQuality = isFastMode ? 0.60 : 0.85;
-    const ZIP_COMPRESSION = isFastMode ? "STORE" : "DEFLATE";
-
-    try {
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const zip = new JSZip();
-
-        let fullText = "";
-
-        // imageBlobs acumula os blobs extraídos inline — sem re-fetch de página.
-        // A Fase 2 passa a ser apenas empacotamento (zip), sem tocar no PDF.
-        let imageBlobs = [];
-
-        const renderCanvas = document.createElement('canvas');
-        const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
-        const extractCanvas = document.createElement('canvas');
-        const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
-
-        // ─────────────────────────────────────────────────────────────────
-        // PASSAGEM ÚNICA: texto + imagens por página
-        //
-        // CORREÇÃO ARQUITETURAL:
-        // O PDF.js guarda os dados dos XObjects de imagem em page.objs enquanto
-        // a página está ativa. Quando page.cleanup() é chamado, esse cache é
-        // destruído. Na abordagem anterior (duas fases), tentava-se acessar
-        // page.objs DEPOIS do cleanup via re-fetch — mas o PDF.js retorna o
-        // operator list de cache sem re-enviar os dados das imagens ao worker,
-        // então page.objs permanecia vazio e page.objs.get() nunca resolvia.
-        //
-        // Solução: extrair os blobs das imagens ANTES de page.cleanup(),
-        // enquanto page.objs ainda está populado. A Fase 2 passa a ser apenas
-        // um zip dos blobs já coletados, sem nenhum re-fetch de página.
-        // ─────────────────────────────────────────────────────────────────
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-            updateStatus(`Processando página ${pageNum} de ${pdf.numPages}...`, false);
-            progressBar.style.width = `${2 + (pageNum / pdf.numPages) * 83}%`;
-            await yieldToMain();
-
-            let pageText = "";
-            try {
-                const page = await pdf.getPage(pageNum);
-
-                // 1. Extração de texto
-                const textContent = await withTimeout(page.getTextContent(), 5000, "Timeout texto");
-                pageText = textContent.items.map(item => item.str).join(' ');
-                pageText = sanitizePageText(pageText, sanitizationRules);
-
-                // 2. Operator list — popula page.objs com os dados das imagens
-                const operatorList = await withTimeout(page.getOperatorList(), 8000, "Timeout operadores");
-                const OPS = pdfjsLib.OPS;
-                let imageCounterPage = 1;
-
-                // 3. Extrair imagens agora, com page.objs vivo (antes do cleanup)
-                for (let i = 0; i < operatorList.fnArray.length; i++) {
-                    const fn = operatorList.fnArray[i];
-                    if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
-                        const imgId = operatorList.argsArray[i][0];
-                        const imageName = `${baseFileName}_PAG_${String(pageNum).padStart(2, '0')}_IMG_${String(imageCounterPage).padStart(2, '0')}.jpg`;
-
-                        pageText += `\n\n[IMAGEM EXTRAÍDA: ${imageName}]\n\n`;
-
-                        try {
-                            // page.objs.get() resolve imediatamente ou aguarda
-                            // o worker terminar o decode — funciona porque a
-                            // página ainda não foi limpa.
-                            const img = await withTimeout(
-                                new Promise((resolve, reject) => {
-                                    page.objs.get(imgId, (obj) => {
-                                        if (obj) resolve(obj);
-                                        else reject(new Error(`Objeto nulo: ${imgId}`));
-                                    });
-                                }),
-                                8000,
-                                `Timeout imagem ${imageName}`
-                            );
-
-                            if (img) {
-                                let drawWidth = img.width || 800;
-                                let drawHeight = img.height || 800;
-                                const MAX_SIZE = isFastMode ? 1000 : 1600;
-
-                                if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
-                                    const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
-                                    drawWidth = Math.round(drawWidth * ratio);
-                                    drawHeight = Math.round(drawHeight * ratio);
-                                }
-
-                                renderCanvas.width = drawWidth;
-                                renderCanvas.height = drawHeight;
-
-                                if (img.bitmap) {
-                                    renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
-                                } else if (img.data) {
-                                    extractCanvas.width = img.width;
-                                    extractCanvas.height = img.height;
-                                    const safePixels = normalizeImageData(img.data, img.width, img.height);
-                                    extractCtx.putImageData(new ImageData(safePixels, img.width, img.height), 0, 0);
-                                    renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
-                                }
-
-                                const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
-                                if (blob) imageBlobs.push({ imageName, blob });
-                            }
-                        } catch (imgErr) {
-                            console.warn(`Imagem ${imageName} ignorada.`, imgErr);
-                        }
-
-                        imageCounterPage++;
-                        await yieldToMain();
-                    }
-                }
-
-                // Seguro limpar agora: texto extraído, blobs coletados
-                page.cleanup();
-
-            } catch (err) {
-                console.warn(`Erro na Pág ${pageNum}.`, err);
-            }
-            fullText += `--- INÍCIO DA PÁGINA ${pageNum} ---\n${pageText.trim()}\n\n`;
-        }
-
-        // ── Download do TXT ─────────────────────────────────────────────
-        if (isSplitMode) {
-            updateStatus("Extração concluída! Baixando TXT e gerando ZIP...", false);
-            const txtBlob = new Blob([fullText], { type: "text/plain;charset=utf-8" });
-            const txtLink = document.createElement("a");
-            txtLink.href = URL.createObjectURL(txtBlob);
-            txtLink.download = `${baseFileName}_transcrito.txt`;
-            txtLink.click();
-        } else {
-            zip.file(`${baseFileName}_transcrito.txt`, fullText);
-        }
-
-        // ── Fase 2: apenas empacotamento dos blobs já coletados ─────────
-        if (imageBlobs.length > 0) {
-            updateStatus(`Compactando ${imageBlobs.length} imagem(ns)...`, false);
-            progressBar.style.width = '88%';
-            await yieldToMain();
-
-            for (const { imageName, blob } of imageBlobs) {
-                zip.file(imageName, blob);
-            }
-
-            const zipBlob = await zip.generateAsync({ type: "blob", compression: ZIP_COMPRESSION }, (meta) => {
-                if (meta.percent > 0) {
-                    progressBar.style.width = `${88 + (meta.percent / 100) * 12}%`;
-                    updateStatus(`Criando ZIP: ${Math.round(meta.percent)}%`, false);
-                }
-            });
-
-            progressBar.style.width = '100%';
-            progressContainer.style.display = 'none';
-            downloadActionArea.style.display = 'block';
-            updateStatus("Processamento concluído! Clique no botão para baixar as imagens.", false);
-
-            // Listener limpo a cada conversão para evitar downloads duplicados
-            btnDownloadZip.onclick = () => {
-                const zipLink = document.createElement("a");
-                zipLink.href = URL.createObjectURL(zipBlob);
-                zipLink.download = isSplitMode ? `${baseFileName}_Imagens.zip` : `${baseFileName}_Extraido.zip`;
-                zipLink.click();
-            };
-
-        } else {
-            // Documento sem imagens
-            if (!isSplitMode) {
-                const zipBlob = await zip.generateAsync({ type: "blob", compression: ZIP_COMPRESSION });
-                const zipLink = document.createElement("a");
-                zipLink.href = URL.createObjectURL(zipBlob);
-                zipLink.download = `${baseFileName}_Extraido.zip`;
-                zipLink.click();
-            }
-            updateStatus(`Pronto! Processo finalizado (sem imagens detectadas).`, false);
-            progressBar.style.width = '100%';
-            setTimeout(() => { progressContainer.style.display = 'none'; progressBar.style.width = '0%'; }, 3000);
-        }
-
-    } catch (error) {
-        console.error("Erro fatal:", error);
-        updateStatus("Erro crítico na leitura. Tente novamente.", true);
-    }
-}
-
 function updateStatus(message, isError) {
     statusArea.textContent = message;
     statusArea.style.color = isError ? "#dc2626" : "var(--text-muted)";
+}
+
+// ============================================================================
+// State Machine (Máquina de Estados)
+// ============================================================================
+let AppState = {
+    pdfDoc: null,
+    baseFileName: '',
+    fullText: '',
+    imageQueue: [], // Mapa do tesouro: { pageNum, imgId, imageName }
+    isFastMode: true
+};
+
+function resetState() {
+    if (AppState.pdfDoc) {
+        AppState.pdfDoc.destroy(); // Libera Worker e Previne Memory Leak
+    }
+    AppState = { 
+        pdfDoc: null, 
+        baseFileName: '', 
+        fullText: '', 
+        imageQueue: [], 
+        isFastMode: fastModeCheckbox.checked 
+    };
+    
+    downloadActionArea.style.display = 'none';
+    btnProcessImagesLater.style.display = 'none';
+    btnDownloadZip.style.display = 'none';
+    btnDownloadTxtAgain.style.display = 'none';
+    actionFeedbackMsg.textContent = '';
+}
+
+// ============================================================================
+// Core Logic: Entry Point
+// ============================================================================
+async function handleFile(file) {
+    if (file.type !== "application/pdf") { 
+        updateStatus("Por favor, envie um arquivo PDF válido.", true); 
+        return; 
+    }
+    
+    resetState();
+    AppState.baseFileName = file.name.replace(/\.[^/.]+$/, "");
+    AppState.isFastMode = fastModeCheckbox.checked;
+    
+    updateStatus("Lendo estrutura do processo...", false);
+    progressContainer.style.display = 'block';
+    progressBar.style.width = '5%';
+
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        AppState.pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        
+        await phaseOneTextExtraction();
+
+    } catch (error) {
+        console.error("Erro fatal:", error);
+        updateStatus("Erro crítico na leitura do arquivo.", true);
+    }
+}
+
+// ============================================================================
+// FASE 1: Apenas texto e mapeamento de imagens (Ultra Rápido)
+// ============================================================================
+async function phaseOneTextExtraction() {
+    const sanitizationRules = buildSanitizationRules();
+    let textResult = "";
+
+    for (let pageNum = 1; pageNum <= AppState.pdfDoc.numPages; pageNum++) {
+        updateStatus(`Lendo Texto e Mapeando Imagens: Pág ${pageNum} de ${AppState.pdfDoc.numPages}...`, false);
+        progressBar.style.width = `${5 + (pageNum / AppState.pdfDoc.numPages) * 45}%`;
+        await yieldToMain();
+
+        let pageText = "";
+        try {
+            const page = await AppState.pdfDoc.getPage(pageNum);
+            
+            // 1. Extração de Texto
+            const textContent = await withTimeout(page.getTextContent(), 5000, "Timeout texto");
+            pageText = textContent.items.map(item => item.str).join(' ');
+            pageText = sanitizePageText(pageText, sanitizationRules);
+
+            // 2. Mapeamento de Imagens
+            const operatorList = await withTimeout(page.getOperatorList(), 5000, "Timeout operadores");
+            const OPS = pdfjsLib.OPS;
+            let imageCounterPage = 1;
+
+            for (let i = 0; i < operatorList.fnArray.length; i++) {
+                const fn = operatorList.fnArray[i];
+                if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
+                    const imgId = operatorList.argsArray[i][0];
+                    const imageName = `${AppState.baseFileName}_PAG_${String(pageNum).padStart(2, '0')}_IMG_${String(imageCounterPage).padStart(2, '0')}.jpg`;
+                    
+                    pageText += `\n\n[IMAGEM EXTRAÍDA: ${imageName}]\n\n`;
+                    
+                    // Alimenta o Mapa do Tesouro (NÃO renderiza agora)
+                    AppState.imageQueue.push({ pageNum, imgId, imageName });
+                    imageCounterPage++;
+                }
+            }
+            // Garante o destrancamento da memória da página no Loop
+            page.cleanup(); 
+        } catch (err) {
+            console.warn(`Erro na Pág ${pageNum}.`, err);
+        }
+        textResult += `--- INÍCIO DA PÁGINA ${pageNum} ---\n${pageText.trim()}\n\n`;
+    }
+
+    AppState.fullText = textResult;
+    triggerTxtDownload();
+
+    // ==========================================
+    // Roteamento baseado no Toggle
+    // ==========================================
+    if (textOnlyToggle.checked) {
+        // Pausa de fluxo. UX: Pergunta se quer as imagens depois.
+        progressBar.style.width = '100%';
+        progressContainer.style.display = 'none';
+        
+        btnDownloadTxtAgain.style.display = 'inline-block';
+        btnDownloadTxtAgain.onclick = triggerTxtDownload;
+
+        if (AppState.imageQueue.length > 0) {
+            updateStatus("Extração de texto concluída instantaneamente!", false);
+            actionFeedbackMsg.textContent = `${AppState.imageQueue.length} imagens mapeadas. Deseja processá-las agora?`;
+            btnProcessImagesLater.style.display = 'inline-block';
+            downloadActionArea.style.display = 'block';
+            
+            // Atrela a Etapa 2 ao botão de continuação
+            btnProcessImagesLater.onclick = async () => {
+                btnProcessImagesLater.style.display = 'none';
+                btnDownloadTxtAgain.style.display = 'none';
+                actionFeedbackMsg.textContent = '';
+                await phaseTwoImageExtraction();
+            };
+        } else {
+            updateStatus("Processo finalizado. Nenhuma imagem encontrada no PDF.", false);
+            downloadActionArea.style.display = 'block';
+        }
+    } else {
+        // Fluxo contínuo (Modo Rápido Desligado)
+        await phaseTwoImageExtraction();
+    }
+}
+
+function triggerTxtDownload() {
+    const txtBlob = new Blob([AppState.fullText], { type: "text/plain;charset=utf-8" });
+    const txtLink = document.createElement("a");
+    txtLink.href = URL.createObjectURL(txtBlob);
+    txtLink.download = `${AppState.baseFileName}_transcrito.txt`;
+    txtLink.click();
+}
+
+// ============================================================================
+// FASE 2: Processamento exclusivo das imagens mapeadas usando cache
+// ============================================================================
+async function phaseTwoImageExtraction() {
+    // Fail-safe caso passe direto pelo toggle e não haja imagens
+    if (AppState.imageQueue.length === 0) {
+        updateStatus(`Pronto! Processo finalizado (sem imagens detectadas).`, false);
+        progressBar.style.width = '100%';
+        setTimeout(() => { progressContainer.style.display = 'none'; progressBar.style.width = '0%'; }, 3000);
+        return;
+    }
+
+    updateStatus(`Iniciando processamento gráfico de ${AppState.imageQueue.length} imagem(ns)...`, false);
+    progressContainer.style.display = 'block';
+    downloadActionArea.style.display = 'none'; 
+    
+    const zip = new JSZip();
+    zip.file(`${AppState.baseFileName}_transcrito.txt`, AppState.fullText);
+    
+    const imageQuality = AppState.isFastMode ? 0.60 : 0.85;
+    const renderCanvas = document.createElement('canvas');
+    const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
+    const extractCanvas = document.createElement('canvas');
+    const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
+
+    // Agrupa as coordenadas por página para não recarregar a mesma página no cache
+    const queueByPage = AppState.imageQueue.reduce((acc, item) => {
+        if (!acc[item.pageNum]) acc[item.pageNum] = [];
+        acc[item.pageNum].push(item);
+        return acc;
+    }, {});
+
+    let processedCount = 0;
+    const totalImages = AppState.imageQueue.length;
+
+    for (const [pageNumStr, imagesArr] of Object.entries(queueByPage)) {
+        const pageNum = parseInt(pageNumStr);
+        try {
+            const page = await AppState.pdfDoc.getPage(pageNum);
+            // Reconstrução rápida do cache de XObjects via operatorList nativo
+            await page.getOperatorList(); 
+
+            for (const item of imagesArr) {
+                updateStatus(`Extraindo imagem ${processedCount + 1} de ${totalImages}...`, false);
+                progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
+                await yieldToMain();
+
+                try {
+                    const img = await new Promise((resolve) => page.objs.get(item.imgId, resolve));
+                    if (img) {
+                        let drawWidth = img.width || 800;
+                        let drawHeight = img.height || 800;
+                        const MAX_SIZE = AppState.isFastMode ? 1000 : 1600;
+
+                        if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
+                            const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
+                            drawWidth = Math.round(drawWidth * ratio);
+                            drawHeight = Math.round(drawHeight * ratio);
+                        }
+
+                        renderCanvas.width = drawWidth; 
+                        renderCanvas.height = drawHeight;
+                        
+                        if (img.bitmap) {
+                            renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
+                        } else if (img.data) {
+                            extractCanvas.width = img.width; 
+                            extractCanvas.height = img.height;
+                            const safePixels = normalizeImageData(img.data, img.width, img.height);
+                            extractCtx.putImageData(new ImageData(safePixels, img.width, img.height), 0, 0);
+                            renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
+                        }
+
+                        const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
+                        zip.file(item.imageName, blob);
+                    }
+                } catch (imgErr) {
+                    console.warn(`Erro isolado na imagem ${item.imageName}`, imgErr);
+                }
+                processedCount++;
+            }
+            page.cleanup();
+        } catch (pageErr) {
+            console.error(`Erro ao carregar página ${pageNum} na Etapa 2`, pageErr);
+        }
+    }
+
+    updateStatus("Gerando arquivo ZIP final...", false);
+    const zipBlob = await zip.generateAsync({ type: "blob", compression: AppState.isFastMode ? "STORE" : "DEFLATE" }, (meta) => {
+        if (meta.percent > 0) {
+            progressBar.style.width = `${85 + (meta.percent / 100) * 15}%`;
+            updateStatus(`Criando ZIP: ${Math.round(meta.percent)}%`, false);
+        }
+    });
+    
+    // UI Final
+    progressBar.style.width = '100%';
+    setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
+    
+    actionFeedbackMsg.textContent = "Processamento finalizado com sucesso!";
+    btnDownloadZip.style.display = 'inline-block';
+    btnDownloadTxtAgain.style.display = 'inline-block';
+    downloadActionArea.style.display = 'block';
+
+    btnDownloadZip.onclick = () => {
+        const zipLink = document.createElement("a");
+        zipLink.href = URL.createObjectURL(zipBlob);
+        zipLink.download = `${AppState.baseFileName}_Extraido.zip`;
+        zipLink.click();
+    };
 }
