@@ -34,6 +34,24 @@
         <input type="file" id="file-input" class="file-input" accept="application/pdf">
     </div>
 
+    <div class="config-panel">
+        <div class="config-title">Inteligência de Limpeza de Texto</div>
+        
+        <div class="config-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="remove-signatures" checked>
+                Excluir automaticamente assinaturas eletrônicas padrão do PJe
+            </label>
+        </div>
+        
+        <div class="config-group">
+            <label for="custom-footers" class="textarea-label">
+                Excluir rodapés e termos repetitivos (separe múltiplos blocos usando <code>---</code>):
+            </label>
+            <textarea id="custom-footers" class="custom-textarea" placeholder="Exemplo:&#10;Este documento é cópia do original...&#10;---&#10;Firmado por assinatura eletrônica..."></textarea>
+        </div>
+    </div>
+
     <div id="status-area"></div>
     <div class="progress-bar-container" id="progress-container">
         <div class="progress-bar" id="progress-bar"></div>
