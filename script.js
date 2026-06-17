@@ -12,6 +12,11 @@ const fastModeCheckbox = document.getElementById('fast-mode');
 const removeSignaturesCheckbox = document.getElementById('remove-signatures');
 const customFootersTextarea = document.getElementById('custom-footers');
 
+// Novos elementos do DOM
+const splitDownloadCheckbox = document.getElementById('split-download');
+const downloadActionArea = document.getElementById('download-action-area');
+const btnDownloadZip = document.getElementById('btn-download-zip');
+
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
@@ -92,16 +97,15 @@ async function handleFile(file) {
     }
 
     const baseFileName = file.name.replace(/\.[^/.]+$/, "");
-    updateStatus("Iniciando conversão estrutural. Preparando ambiente...", false);
+    downloadActionArea.style.display = 'none'; // Esconde botão se houver nova conversão
+    updateStatus("Fase 1: Extraindo texto e mapeando estruturalmente...", false);
     progressContainer.style.display = 'block';
     progressBar.style.width = '2%';
 
     const sanitizationRules = buildSanitizationRules();
-    
-    // Captura o estado do Modo Turbo
     const isFastMode = fastModeCheckbox.checked;
+    const isSplitMode = splitDownloadCheckbox ? splitDownloadCheckbox.checked : true;
     
-    // Configurações dinâmicas baseadas no Modo Turbo
     const imageQuality = isFastMode ? 0.60 : 0.85; 
     const ZIP_COMPRESSION = isFastMode ? "STORE" : "DEFLATE";
 
@@ -111,111 +115,142 @@ async function handleFile(file) {
         const zip = new JSZip();
         
         let fullText = "";
+        let imageTasks = []; 
         let imageCounterTotal = 0;
 
-        const renderCanvas = document.createElement('canvas');
-        const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
-        const extractCanvas = document.createElement('canvas');
-        const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
-
+        // FASE 1: Leitura Síncrona de Texto e Metadados Visuais
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-            updateStatus(`Analisando página ${pageNum} de ${pdf.numPages}...`, false);
-            progressBar.style.width = `${(pageNum / pdf.numPages) * 100}%`;
-            
+            updateStatus(`Fase 1 - Lendo página ${pageNum} de ${pdf.numPages}...`, false);
+            progressBar.style.width = `${(pageNum / pdf.numPages) * 50}%`; 
             await yieldToMain(); 
 
             let pageText = "";
-            let operatorList = null;
-
             try {
                 const page = await pdf.getPage(pageNum);
                 const textContent = await withTimeout(page.getTextContent(), 5000, "Timeout texto");
                 pageText = textContent.items.map(item => item.str).join(' ');
-
+                
                 pageText = sanitizePageText(pageText, sanitizationRules);
 
-                operatorList = await withTimeout(page.getOperatorList(), 5000, "Timeout operadores");
-                
+                const operatorList = await withTimeout(page.getOperatorList(), 5000, "Timeout operadores");
                 let imageCounterPage = 1;
                 const OPS = pdfjsLib.OPS;
 
                 for (let i = 0; i < operatorList.fnArray.length; i++) {
                     const fn = operatorList.fnArray[i];
-                    
                     if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
                         const imgId = operatorList.argsArray[i][0];
                         const imageName = `${baseFileName}_PAG_${String(pageNum).padStart(2, '0')}_IMG_${String(imageCounterPage).padStart(2, '0')}.jpg`;
                         
-                        try {
-                            const img = await new Promise(resolve => page.objs.get(imgId, resolve));
-                            if (!img) continue;
-
-                            pageText += `\n\n[IMAGEM EXTRAÍDA: ${imageName}]\n\n`;
-
-                            let drawWidth = img.width || 800;
-                            let drawHeight = img.height || 800;
-                            
-                            // Reduz limite de tamanho se o Turbo estiver ligado
-                            const MAX_SIZE = isFastMode ? 1000 : 1600;
-                            
-                            if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
-                                const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
-                                drawWidth *= ratio; drawHeight *= ratio;
-                            }
-
-                            renderCanvas.width = drawWidth; renderCanvas.height = drawHeight;
-
-                            await yieldToMain(); 
-
-                            if (img.bitmap) {
-                                renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
-                            } else if (img.data) {
-                                extractCanvas.width = img.width; extractCanvas.height = img.height;
-                                const safePixelArray = normalizeImageData(img.data, img.width, img.height);
-                                const imageData = new ImageData(safePixelArray, img.width, img.height);
-                                
-                                await yieldToMain();
-                                extractCtx.putImageData(imageData, 0, 0);
-                                renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
-                            }
-
-                            // Renderiza o Blob aplicando a qualidade dinâmica
-                            const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
-                            if (blob) zip.file(imageName, blob);
-
-                            imageCounterPage++; imageCounterTotal++;
-
-                        } catch (err) {
-                            console.warn(`Imagem ignorada na Pág ${pageNum}.`, err);
-                        }
+                        pageText += `\n\n[IMAGEM EXTRAÍDA: ${imageName}]\n\n`;
+                        imageTasks.push({ pageNum, imgId, imageName });
+                        imageCounterPage++;
+                        imageCounterTotal++;
                     }
                 }
-            } catch (pageError) {
-                console.warn(`Erro estrutural Pág ${pageNum}.`, pageError);
+                page.cleanup(); // CRÍTICO: Evita vazamento de memória na Fase 1
+            } catch (err) {
+                console.warn(`Erro estrutural Pág ${pageNum}.`, err);
             }
-
             fullText += `--- INÍCIO DA PÁGINA ${pageNum} ---\n${pageText.trim()}\n\n`;
         }
 
-        updateStatus(`Finalizando e empacotando (${isFastMode ? 'Modo Turbo' : 'Padrão'})...`, false);
-        zip.file(`${baseFileName}_transcrito.txt`, fullText);
+        // FIM DA FASE 1: Download imediato e seguro do TXT
+        if (isSplitMode) {
+            updateStatus("Texto extraído! O TXT foi baixado. Iniciando imagens...", false);
+            const txtBlob = new Blob([fullText], { type: "text/plain;charset=utf-8" });
+            const txtLink = document.createElement("a");
+            txtLink.href = URL.createObjectURL(txtBlob);
+            txtLink.download = `${baseFileName}_transcrito.txt`;
+            txtLink.click();
+        } else {
+            zip.file(`${baseFileName}_transcrito.txt`, fullText);
+        }
 
-        // Gera o ZIP aplicando o método de compressão condicional
-        const zipBlob = await zip.generateAsync({ 
-            type: "blob", 
-            compression: ZIP_COMPRESSION // "STORE" = Rápido; "DEFLATE" = Lento, tamanho menor
-        }, (metadata) => {
-            updateStatus(`Criando ZIP: ${Math.round(metadata.percent)}%`, false);
-        });
-        
-        const downloadLink = document.createElement("a");
-        downloadLink.href = URL.createObjectURL(zipBlob);
-        downloadLink.download = `${baseFileName}_Extraido.zip`;
-        downloadLink.click();
+        // FASE 2: Processamento Isolado de Imagens em Segundo Plano
+        if (imageTasks.length > 0) {
+            const renderCanvas = document.createElement('canvas');
+            const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
+            const extractCanvas = document.createElement('canvas');
+            const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
 
-        updateStatus(`Pronto! ${pdf.numPages} páginas e ${imageCounterTotal} imagens extraídas.`, false);
-        setTimeout(() => { progressContainer.style.display = 'none'; progressBar.style.width = '0%'; }, 5000);
+            for (let i = 0; i < imageTasks.length; i++) {
+                const task = imageTasks[i];
+                updateStatus(`Fase 2 - Processando imagem ${i + 1} de ${imageTasks.length}...`, false);
+                progressBar.style.width = `${50 + ((i / imageTasks.length) * 50)}%`; 
+                await yieldToMain();
 
+                try {
+                    // Refetch necessário: Troca de custo de CPU por estabilidade de RAM
+                    const page = await pdf.getPage(task.pageNum);
+                    const img = await new Promise(resolve => page.objs.get(task.imgId, resolve));
+                    
+                    if (img) {
+                        let drawWidth = img.width || 800;
+                        let drawHeight = img.height || 800;
+                        const MAX_SIZE = isFastMode ? 1000 : 1600;
+                        
+                        if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
+                            const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
+                            drawWidth *= ratio; drawHeight *= ratio;
+                        }
+
+                        renderCanvas.width = drawWidth; renderCanvas.height = drawHeight;
+                        await yieldToMain(); 
+
+                        if (img.bitmap) {
+                            renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
+                        } else if (img.data) {
+                            extractCanvas.width = img.width; extractCanvas.height = img.height;
+                            const safePixelArray = normalizeImageData(img.data, img.width, img.height);
+                            const imageData = new ImageData(safePixelArray, img.width, img.height);
+                            
+                            extractCtx.putImageData(imageData, 0, 0);
+                            renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
+                        }
+
+                        const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
+                        if (blob) zip.file(task.imageName, blob);
+                    }
+                    page.cleanup(); // CRÍTICO: Libera a RAM da imagem após ela estar no JSZip
+                } catch (err) {
+                    console.warn(`Imagem ${task.imageName} ignorada.`, err);
+                }
+            }
+
+            // Geração final do Blob do ZIP
+            updateStatus(`Compactando arquivo de imagens...`, false);
+            const zipBlob = await zip.generateAsync({ type: "blob", compression: ZIP_COMPRESSION }, (metadata) => {
+                if(metadata.percent > 0) updateStatus(`Criando ZIP: ${Math.round(metadata.percent)}%`, false);
+            });
+            
+            // UX Segura: Transfere a responsabilidade do download para o usuário
+            progressBar.style.width = '100%';
+            progressContainer.style.display = 'none';
+            downloadActionArea.style.display = 'block';
+            updateStatus("Processamento concluído! Clique no botão para baixar as imagens.", false);
+
+            // Reseta event listeners anteriores para evitar múltiplos downloads indesejados
+            btnDownloadZip.onclick = () => {
+                const zipLink = document.createElement("a");
+                zipLink.href = URL.createObjectURL(zipBlob);
+                zipLink.download = isSplitMode ? `${baseFileName}_Imagens.zip` : `${baseFileName}_Extraido.zip`;
+                zipLink.click();
+            };
+
+        } else {
+            // Documentos apenas com texto
+            if (!isSplitMode) {
+                const zipBlob = await zip.generateAsync({ type: "blob", compression: ZIP_COMPRESSION });
+                const zipLink = document.createElement("a");
+                zipLink.href = URL.createObjectURL(zipBlob);
+                zipLink.download = `${baseFileName}_Extraido.zip`;
+                zipLink.click();
+            }
+            updateStatus(`Pronto! Processo finalizado (Sem imagens detectadas).`, false);
+            progressBar.style.width = '100%';
+            setTimeout(() => { progressContainer.style.display = 'none'; progressBar.style.width = '0%'; }, 3000);
+        }
     } catch (error) {
         console.error("Erro fatal:", error);
         updateStatus("Erro crítico na leitura. Tente novamente.", true);
