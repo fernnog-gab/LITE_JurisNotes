@@ -96,14 +96,13 @@ async function handleFile(file) {
 
     const baseFileName = file.name.replace(/\.[^/.]+$/, "");
     downloadActionArea.style.display = 'none';
-    updateStatus("Fase 1: Extraindo texto e mapeando estruturalmente...", false);
+    updateStatus("Iniciando processamento...", false);
     progressContainer.style.display = 'block';
     progressBar.style.width = '2%';
 
     const sanitizationRules = buildSanitizationRules();
     const isFastMode = fastModeCheckbox.checked;
     const isSplitMode = splitDownloadCheckbox ? splitDownloadCheckbox.checked : true;
-
     const imageQuality = isFastMode ? 0.60 : 0.85;
     const ZIP_COMPRESSION = isFastMode ? "STORE" : "DEFLATE";
 
@@ -113,28 +112,51 @@ async function handleFile(file) {
         const zip = new JSZip();
 
         let fullText = "";
-        let imageTasks = [];
+
+        // imageBlobs acumula os blobs extraídos inline — sem re-fetch de página.
+        // A Fase 2 passa a ser apenas empacotamento (zip), sem tocar no PDF.
+        let imageBlobs = [];
+
+        const renderCanvas = document.createElement('canvas');
+        const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
+        const extractCanvas = document.createElement('canvas');
+        const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
 
         // ─────────────────────────────────────────────────────────────────
-        // FASE 1: Leitura de Texto e Mapeamento Estrutural de Imagens
+        // PASSAGEM ÚNICA: texto + imagens por página
+        //
+        // CORREÇÃO ARQUITETURAL:
+        // O PDF.js guarda os dados dos XObjects de imagem em page.objs enquanto
+        // a página está ativa. Quando page.cleanup() é chamado, esse cache é
+        // destruído. Na abordagem anterior (duas fases), tentava-se acessar
+        // page.objs DEPOIS do cleanup via re-fetch — mas o PDF.js retorna o
+        // operator list de cache sem re-enviar os dados das imagens ao worker,
+        // então page.objs permanecia vazio e page.objs.get() nunca resolvia.
+        //
+        // Solução: extrair os blobs das imagens ANTES de page.cleanup(),
+        // enquanto page.objs ainda está populado. A Fase 2 passa a ser apenas
+        // um zip dos blobs já coletados, sem nenhum re-fetch de página.
         // ─────────────────────────────────────────────────────────────────
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-            updateStatus(`Fase 1 - Lendo página ${pageNum} de ${pdf.numPages}...`, false);
-            progressBar.style.width = `${(pageNum / pdf.numPages) * 50}%`;
+            updateStatus(`Processando página ${pageNum} de ${pdf.numPages}...`, false);
+            progressBar.style.width = `${2 + (pageNum / pdf.numPages) * 83}%`;
             await yieldToMain();
 
             let pageText = "";
             try {
                 const page = await pdf.getPage(pageNum);
+
+                // 1. Extração de texto
                 const textContent = await withTimeout(page.getTextContent(), 5000, "Timeout texto");
                 pageText = textContent.items.map(item => item.str).join(' ');
-
                 pageText = sanitizePageText(pageText, sanitizationRules);
 
-                const operatorList = await withTimeout(page.getOperatorList(), 5000, "Timeout operadores");
-                let imageCounterPage = 1;
+                // 2. Operator list — popula page.objs com os dados das imagens
+                const operatorList = await withTimeout(page.getOperatorList(), 8000, "Timeout operadores");
                 const OPS = pdfjsLib.OPS;
+                let imageCounterPage = 1;
 
+                // 3. Extrair imagens agora, com page.objs vivo (antes do cleanup)
                 for (let i = 0; i < operatorList.fnArray.length; i++) {
                     const fn = operatorList.fnArray[i];
                     if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
@@ -142,23 +164,70 @@ async function handleFile(file) {
                         const imageName = `${baseFileName}_PAG_${String(pageNum).padStart(2, '0')}_IMG_${String(imageCounterPage).padStart(2, '0')}.jpg`;
 
                         pageText += `\n\n[IMAGEM EXTRAÍDA: ${imageName}]\n\n`;
-                        imageTasks.push({ pageNum, imgId, imageName });
+
+                        try {
+                            // page.objs.get() resolve imediatamente ou aguarda
+                            // o worker terminar o decode — funciona porque a
+                            // página ainda não foi limpa.
+                            const img = await withTimeout(
+                                new Promise((resolve, reject) => {
+                                    page.objs.get(imgId, (obj) => {
+                                        if (obj) resolve(obj);
+                                        else reject(new Error(`Objeto nulo: ${imgId}`));
+                                    });
+                                }),
+                                8000,
+                                `Timeout imagem ${imageName}`
+                            );
+
+                            if (img) {
+                                let drawWidth = img.width || 800;
+                                let drawHeight = img.height || 800;
+                                const MAX_SIZE = isFastMode ? 1000 : 1600;
+
+                                if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
+                                    const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
+                                    drawWidth = Math.round(drawWidth * ratio);
+                                    drawHeight = Math.round(drawHeight * ratio);
+                                }
+
+                                renderCanvas.width = drawWidth;
+                                renderCanvas.height = drawHeight;
+
+                                if (img.bitmap) {
+                                    renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
+                                } else if (img.data) {
+                                    extractCanvas.width = img.width;
+                                    extractCanvas.height = img.height;
+                                    const safePixels = normalizeImageData(img.data, img.width, img.height);
+                                    extractCtx.putImageData(new ImageData(safePixels, img.width, img.height), 0, 0);
+                                    renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
+                                }
+
+                                const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
+                                if (blob) imageBlobs.push({ imageName, blob });
+                            }
+                        } catch (imgErr) {
+                            console.warn(`Imagem ${imageName} ignorada.`, imgErr);
+                        }
+
                         imageCounterPage++;
+                        await yieldToMain();
                     }
                 }
-                // CRÍTICO: page.cleanup() limpa page.objs junto com a memória.
-                // A Fase 2 vai re-popular os objetos chamando getOperatorList()
-                // novamente — por isso o cleanup aqui é seguro.
+
+                // Seguro limpar agora: texto extraído, blobs coletados
                 page.cleanup();
+
             } catch (err) {
-                console.warn(`Erro estrutural Pág ${pageNum}.`, err);
+                console.warn(`Erro na Pág ${pageNum}.`, err);
             }
             fullText += `--- INÍCIO DA PÁGINA ${pageNum} ---\n${pageText.trim()}\n\n`;
         }
 
-        // FIM DA FASE 1: Download imediato do TXT
+        // ── Download do TXT ─────────────────────────────────────────────
         if (isSplitMode) {
-            updateStatus("Texto extraído! O TXT foi baixado. Iniciando processamento de imagens...", false);
+            updateStatus("Extração concluída! Baixando TXT e gerando ZIP...", false);
             const txtBlob = new Blob([fullText], { type: "text/plain;charset=utf-8" });
             const txtLink = document.createElement("a");
             txtLink.href = URL.createObjectURL(txtBlob);
@@ -168,108 +237,21 @@ async function handleFile(file) {
             zip.file(`${baseFileName}_transcrito.txt`, fullText);
         }
 
-        // ─────────────────────────────────────────────────────────────────
-        // FASE 2: Extração de Imagens
-        //
-        // CORREÇÃO DO BUG:
-        // O page.cleanup() da Fase 1 destrói page.objs. Ao chamar
-        // pdf.getPage() novamente, o PDF.js retorna a mesma instância
-        // em cache — com objs vazio. A Promise de page.objs.get() ficava
-        // pendente para sempre porque nenhum getOperatorList() era chamado
-        // para re-popular os objetos, travando o loop silenciosamente.
-        //
-        // Solução: chamar getOperatorList() no início de cada novo pageNum
-        // na Fase 2, re-disparando o carregamento dos objetos da página.
-        // Otimização: agrupar tasks por página para evitar chamadas
-        // redundantes (uma página com N imagens precisa de apenas 1 chamada).
-        // ─────────────────────────────────────────────────────────────────
-        if (imageTasks.length > 0) {
-            const renderCanvas = document.createElement('canvas');
-            const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
-            const extractCanvas = document.createElement('canvas');
-            const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
+        // ── Fase 2: apenas empacotamento dos blobs já coletados ─────────
+        if (imageBlobs.length > 0) {
+            updateStatus(`Compactando ${imageBlobs.length} imagem(ns)...`, false);
+            progressBar.style.width = '88%';
+            await yieldToMain();
 
-            let currentPageNum = -1;
-            let currentPage = null;
-
-            for (let i = 0; i < imageTasks.length; i++) {
-                const task = imageTasks[i];
-                updateStatus(`Fase 2 - Processando imagem ${i + 1} de ${imageTasks.length}...`, false);
-                progressBar.style.width = `${50 + ((i / imageTasks.length) * 50)}%`;
-                await yieldToMain();
-
-                try {
-                    // FIX: Só busca e re-processa a página quando ela muda.
-                    // getOperatorList() re-popula page.objs (destruído pelo
-                    // cleanup da Fase 1), permitindo que page.objs.get() resolva.
-                    if (task.pageNum !== currentPageNum) {
-                        if (currentPage) currentPage.cleanup();
-
-                        currentPage = await pdf.getPage(task.pageNum);
-
-                        // Esta é a linha que estava faltando: re-dispara o
-                        // carregamento dos objetos de imagem da página.
-                        await withTimeout(
-                            currentPage.getOperatorList(),
-                            10000,
-                            `Timeout ao recarregar objetos da página ${task.pageNum}`
-                        );
-                        currentPageNum = task.pageNum;
-                    }
-
-                    // FIX: withTimeout evita que um objeto problemático
-                    // trave o loop indefinidamente.
-                    const img = await withTimeout(
-                        new Promise((resolve, reject) => {
-                            currentPage.objs.get(task.imgId, (obj) => {
-                                if (obj) resolve(obj);
-                                else reject(new Error(`Objeto nulo para imgId: ${task.imgId}`));
-                            });
-                        }),
-                        8000,
-                        `Timeout ao obter imagem ${task.imageName}`
-                    );
-
-                    if (img) {
-                        let drawWidth = img.width || 800;
-                        let drawHeight = img.height || 800;
-                        const MAX_SIZE = isFastMode ? 1000 : 1600;
-
-                        if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
-                            const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
-                            drawWidth *= ratio; drawHeight *= ratio;
-                        }
-
-                        renderCanvas.width = drawWidth; renderCanvas.height = drawHeight;
-                        await yieldToMain();
-
-                        if (img.bitmap) {
-                            renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
-                        } else if (img.data) {
-                            extractCanvas.width = img.width; extractCanvas.height = img.height;
-                            const safePixelArray = normalizeImageData(img.data, img.width, img.height);
-                            const imageData = new ImageData(safePixelArray, img.width, img.height);
-
-                            extractCtx.putImageData(imageData, 0, 0);
-                            renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
-                        }
-
-                        const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
-                        if (blob) zip.file(task.imageName, blob);
-                    }
-                } catch (err) {
-                    // Falha isolada: loga e continua o loop normalmente.
-                    console.warn(`Imagem ${task.imageName} ignorada.`, err);
-                }
+            for (const { imageName, blob } of imageBlobs) {
+                zip.file(imageName, blob);
             }
 
-            // Cleanup da última página ativa
-            if (currentPage) currentPage.cleanup();
-
-            // Geração final do ZIP
-            updateStatus(`Compactando arquivo de imagens...`, false);
-            const zipBlob = await zip.generateAsync({ type: "blob", compression: ZIP_COMPRESSION }, (metadata) => {
-                if (metadata.percent > 0) updateStatus(`Criando ZIP: ${Math.round(metadata.percent)}%`, false);
+            const zipBlob = await zip.generateAsync({ type: "blob", compression: ZIP_COMPRESSION }, (meta) => {
+                if (meta.percent > 0) {
+                    progressBar.style.width = `${88 + (meta.percent / 100) * 12}%`;
+                    updateStatus(`Criando ZIP: ${Math.round(meta.percent)}%`, false);
+                }
             });
 
             progressBar.style.width = '100%';
@@ -277,7 +259,7 @@ async function handleFile(file) {
             downloadActionArea.style.display = 'block';
             updateStatus("Processamento concluído! Clique no botão para baixar as imagens.", false);
 
-            // Reseta listeners para evitar downloads duplicados
+            // Listener limpo a cada conversão para evitar downloads duplicados
             btnDownloadZip.onclick = () => {
                 const zipLink = document.createElement("a");
                 zipLink.href = URL.createObjectURL(zipBlob);
@@ -298,6 +280,7 @@ async function handleFile(file) {
             progressBar.style.width = '100%';
             setTimeout(() => { progressContainer.style.display = 'none'; progressBar.style.width = '0%'; }, 3000);
         }
+
     } catch (error) {
         console.error("Erro fatal:", error);
         updateStatus("Erro crítico na leitura. Tente novamente.", true);
