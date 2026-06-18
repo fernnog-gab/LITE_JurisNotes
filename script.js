@@ -343,21 +343,38 @@ async function processBatchPhaseTwo() {
                 return acc;
             }, {});
 
+            // Criamos uma tela invisível apenas para "enganar" o PDF.js
+            const fakePageCanvas = document.createElement('canvas');
+            const fakePageCtx = fakePageCanvas.getContext('2d');
+
             for (const [pageNumStr, imagesArr] of Object.entries(queueByPage)) {
                 const pageNum = parseInt(pageNumStr);
                 const page = await pdfDoc.getPage(pageNum);
                 
-                // NOVO: Pedimos a lista de operadores fresca desta sessão!
+                logDebug(`Desbloqueando recursos da página ${pageNum}...`);
+                await yieldToMain();
+
+                // TRUQUE MÁGICO: Mandamos ele renderizar a página numa escala pequena.
+                // Isso OBRIGA o motor interno do PDF a decodificar 100% das imagens da página na memória.
+                const viewport = page.getViewport({ scale: 0.8 });
+                fakePageCanvas.width = viewport.width;
+                fakePageCanvas.height = viewport.height;
+                
+                try {
+                    await page.render({ canvasContext: fakePageCtx, viewport }).promise;
+                } catch (renderErr) {
+                    logDebug(`Aviso pág ${pageNum}: ${renderErr.message} (Tentando extrair mesmo assim)`, true);
+                }
+
+                // Agora as imagens estão frescas e 100% decodificadas!
                 const operatorList = await page.getOperatorList(); 
                 const OPS = pdfjsLib.OPS;
-
-                let currentIndex = 0; // Contador para parear com nossa fila
+                let currentIndex = 0;
 
                 for (let j = 0; j < operatorList.fnArray.length; j++) {
                     const fn = operatorList.fnArray[j];
                     
                     if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
-                        // Pegamos a ID nova e atualizada que o PDF.js acabou de gerar
                         const freshImgId = operatorList.argsArray[j][0];
                         const item = imagesArr[currentIndex];
 
@@ -365,16 +382,15 @@ async function processBatchPhaseTwo() {
                             updateStatus(`Extraindo imagem ${processedCount + 1} de ${totalImages}...`, false);
                             progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
                             
-                            logDebug(`Extraindo: ${item.imageName}`);
+                            logDebug(`Salvando: ${item.imageName}`);
                             await yieldToMain();
 
                             try {
-                                // Se a ID for a certa, o PDF.js responde em milissegundos. 
-                                // Reduzimos o timeout para 2 segundos. Se demorar mais, a imagem no PDF está corrompida.
+                                // Pega a imagem instantaneamente do cache destravado
                                 const img = await withTimeout(
                                     new Promise((resolve) => page.objs.get(freshImgId, resolve)), 
-                                    2000, 
-                                    "Imagem não encontrada pelo motor do PDF"
+                                    3000, 
+                                    "A imagem não foi carregada para a memória."
                                 );
                                 
                                 if (img) {
@@ -382,7 +398,7 @@ async function processBatchPhaseTwo() {
                                     let drawHeight = img.height || 800;
                                     
                                     if ((drawWidth * drawHeight) > MAX_SAFE_PIXELS) {
-                                        throw new Error("Imagem muito pesada (excede Megapixels de segurança).");
+                                        throw new Error("Imagem gigante ignorada por segurança de RAM.");
                                     }
 
                                     if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
@@ -394,31 +410,46 @@ async function processBatchPhaseTwo() {
                                     renderCanvas.width = drawWidth; 
                                     renderCanvas.height = drawHeight;
                                     
-                                    if (img.bitmap) {
-                                        renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
+                                    // ADAPTADOR UNIVERSAL: Aceita qualquer loucura de formato do PDF.js
+                                    let imageToDraw = null;
+                                    if (img instanceof HTMLElement || img instanceof ImageBitmap) {
+                                        imageToDraw = img; // Formato Web Nativo
+                                    } else if (img.bitmap) {
+                                        imageToDraw = img.bitmap; // Formato Interno 1
                                     } else if (img.data) {
+                                        // Formato Interno 2 (Matriz de Pixels Brutos)
                                         extractCanvas.width = img.width; 
                                         extractCanvas.height = img.height;
                                         const safePixels = normalizeImageData(img.data, img.width, img.height);
                                         extractCtx.putImageData(new ImageData(safePixels, img.width, img.height), 0, 0);
-                                        renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
+                                        imageToDraw = extractCanvas;
+                                    } else if (img.canvas) {
+                                        imageToDraw = img.canvas; // Formato Interno 3 (Pré-desenhado)
                                     }
 
+                                    if (!imageToDraw) throw new Error("O PDF gerou um formato de imagem alienígena.");
+
+                                    // Pinta, converte para JPG leve e coloca no ZIP
+                                    renderCtx.drawImage(imageToDraw, 0, 0, drawWidth, drawHeight);
                                     const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
                                     zip.file(item.imageName, blob);
                                     
+                                    // Reciclagem de memória
                                     renderCanvas.width = 0; renderCanvas.height = 0;
                                     extractCanvas.width = 0; extractCanvas.height = 0;
                                 }
                             } catch (imgErr) {
-                                logDebug(`Erro final na ${item.imageName}: ${imgErr.message}`, true);
-                                zip.file(`${item.imageName}_FALHA.txt`, "Falha técnica: Imagem ilegível ou corrompida no arquivo nativo.");
+                                logDebug(`Erro na ${item.imageName}: ${imgErr.message}`, true);
+                                zip.file(`${item.imageName}_FALHA.txt`, `Erro ao processar: ${imgErr.message}`);
                             }
                             processedCount++;
                             currentIndex++;
                         }
                     }
                 }
+                // Limpa o truque da página falsa
+                fakePageCanvas.width = 0;
+                fakePageCanvas.height = 0;
                 page.cleanup();
             }
         } catch (err) {
