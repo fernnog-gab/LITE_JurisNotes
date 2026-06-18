@@ -346,67 +346,78 @@ async function processBatchPhaseTwo() {
             for (const [pageNumStr, imagesArr] of Object.entries(queueByPage)) {
                 const pageNum = parseInt(pageNumStr);
                 const page = await pdfDoc.getPage(pageNum);
-                await page.getOperatorList(); 
+                
+                // NOVO: Pedimos a lista de operadores fresca desta sessão!
+                const operatorList = await page.getOperatorList(); 
+                const OPS = pdfjsLib.OPS;
 
-                for (const item of imagesArr) {
-                    updateStatus(`Extraindo imagem ${processedCount + 1} de ${totalImages}...`, false);
-                    progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
-                    logDebug(`Processando: ${item.imageName}`);
+                let currentIndex = 0; // Contador para parear com nossa fila
+
+                for (let j = 0; j < operatorList.fnArray.length; j++) {
+                    const fn = operatorList.fnArray[j];
                     
-                    // Respeita o Event Loop nativo (evita freeze da UI sem delays artificiais)
-                    await yieldToMain();
+                    if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
+                        // Pegamos a ID nova e atualizada que o PDF.js acabou de gerar
+                        const freshImgId = operatorList.argsArray[j][0];
+                        const item = imagesArr[currentIndex];
 
-                    try {
-                        const img = await withTimeout(
-                            new Promise((resolve) => page.objs.get(item.imgId, resolve)), 
-                            8000, 
-                            "Timeout ao carregar imagem"
-                        );
-                        
-                        if (img) {
-                            let drawWidth = img.width || 800;
-                            let drawHeight = img.height || 800;
+                        if (item) {
+                            updateStatus(`Extraindo imagem ${processedCount + 1} de ${totalImages}...`, false);
+                            progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
                             
-                            // Circuit Breaker: Proteção contra imagens digitalizadas gigantes
-                            if ((drawWidth * drawHeight) > MAX_SAFE_PIXELS) {
-                                throw new Error("Imagem excede o limite de memória seguro e foi ignorada.");
-                            }
+                            logDebug(`Extraindo: ${item.imageName}`);
+                            await yieldToMain();
 
-                            // Downscale proporcional para a IA
-                            if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
-                                const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
-                                drawWidth = Math.round(drawWidth * ratio);
-                                drawHeight = Math.round(drawHeight * ratio);
-                            }
+                            try {
+                                // Se a ID for a certa, o PDF.js responde em milissegundos. 
+                                // Reduzimos o timeout para 2 segundos. Se demorar mais, a imagem no PDF está corrompida.
+                                const img = await withTimeout(
+                                    new Promise((resolve) => page.objs.get(freshImgId, resolve)), 
+                                    2000, 
+                                    "Imagem não encontrada pelo motor do PDF"
+                                );
+                                
+                                if (img) {
+                                    let drawWidth = img.width || 800;
+                                    let drawHeight = img.height || 800;
+                                    
+                                    if ((drawWidth * drawHeight) > MAX_SAFE_PIXELS) {
+                                        throw new Error("Imagem muito pesada (excede Megapixels de segurança).");
+                                    }
 
-                            renderCanvas.width = drawWidth; 
-                            renderCanvas.height = drawHeight;
-                            
-                            if (img.bitmap) {
-                                renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
-                            } else if (img.data) {
-                                extractCanvas.width = img.width; 
-                                extractCanvas.height = img.height;
-                                const safePixels = normalizeImageData(img.data, img.width, img.height);
-                                extractCtx.putImageData(new ImageData(safePixels, img.width, img.height), 0, 0);
-                                renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
-                            }
+                                    if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
+                                        const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
+                                        drawWidth = Math.round(drawWidth * ratio);
+                                        drawHeight = Math.round(drawHeight * ratio);
+                                    }
 
-                            const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
-                            zip.file(item.imageName, blob);
-                            
-                            // GERENCIAMENTO ATIVO DE MEMÓRIA (Destruição dos Buffers)
-                            // Zerar a dimensão obriga o Garbage Collector a liberar a RAM imediatamente.
-                            renderCanvas.width = 0;
-                            renderCanvas.height = 0;
-                            extractCanvas.width = 0;
-                            extractCanvas.height = 0;
+                                    renderCanvas.width = drawWidth; 
+                                    renderCanvas.height = drawHeight;
+                                    
+                                    if (img.bitmap) {
+                                        renderCtx.drawImage(img.bitmap, 0, 0, drawWidth, drawHeight);
+                                    } else if (img.data) {
+                                        extractCanvas.width = img.width; 
+                                        extractCanvas.height = img.height;
+                                        const safePixels = normalizeImageData(img.data, img.width, img.height);
+                                        extractCtx.putImageData(new ImageData(safePixels, img.width, img.height), 0, 0);
+                                        renderCtx.drawImage(extractCanvas, 0, 0, drawWidth, drawHeight);
+                                    }
+
+                                    const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
+                                    zip.file(item.imageName, blob);
+                                    
+                                    renderCanvas.width = 0; renderCanvas.height = 0;
+                                    extractCanvas.width = 0; extractCanvas.height = 0;
+                                }
+                            } catch (imgErr) {
+                                logDebug(`Erro final na ${item.imageName}: ${imgErr.message}`, true);
+                                zip.file(`${item.imageName}_FALHA.txt`, "Falha técnica: Imagem ilegível ou corrompida no arquivo nativo.");
+                            }
+                            processedCount++;
+                            currentIndex++;
                         }
-                    } catch (imgErr) {
-                        logDebug(`Erro na extração de ${item.imageName}: ${imgErr.message}`, true);
-                        zip.file(`${item.imageName}_FALHA.txt`, "Falha técnica: A imagem excedeu o limite de memória ou estava corrompida no PDF.");
                     }
-                    processedCount++;
                 }
                 page.cleanup();
             }
