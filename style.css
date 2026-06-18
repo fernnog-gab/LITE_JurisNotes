@@ -296,3 +296,18 @@ body {
 
 .btn-secondary:hover { background-color: #F0F4F4; }
 .btn-secondary:active { transform: scale(0.98); }
+
+/* ==========================================================================
+   Console de Diagnóstico (Debug)
+   ========================================================================== */
+#debug-console::-webkit-scrollbar {
+    width: 6px;
+}
+#debug-console::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 4px;
+}
+#debug-logs-wrapper p {
+    margin: 2px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}

@@ -37,8 +37,25 @@ fileInput.addEventListener('change', (e) => {
 });
 
 // ============================================================================
-// Helpers
+// Helpers & Logging
 // ============================================================================
+const debugConsole = document.getElementById('debug-console');
+const debugLogsWrapper = document.getElementById('debug-logs-wrapper');
+
+function logDebug(msg, isError = false) {
+    if (!debugConsole || !debugLogsWrapper) return;
+    debugConsole.style.display = 'block';
+    const time = new Date().toLocaleTimeString();
+    
+    // Performance: O(1) DOM Insertion para evitar Reflow Thrashing
+    const logNode = document.createElement('p');
+    logNode.textContent = `[${time}] ${msg}`;
+    if (isError) logNode.style.color = '#EF4444'; // Vermelho em erros
+    
+    debugLogsWrapper.appendChild(logNode);
+    debugConsole.scrollTop = debugConsole.scrollHeight; // Auto-scroll
+}
+
 const withTimeout = (promise, ms, errorMsg) => {
     let timer;
     const timeoutPromise = new Promise((_, reject) => {
@@ -297,12 +314,15 @@ async function processBatchPhaseTwo() {
     
     const zip = new JSZip();
     
-    // Insere também todos os TXTs individuais no ZIP para conveniência
     AppState.processedFiles.forEach(f => {
         zip.file(`${f.baseFileName}_transcrito.txt`, f.fullText);
     });
     
+    // Configurações focadas em IA e Memória
     const imageQuality = AppState.isFastMode ? 0.60 : 0.85;
+    const MAX_SAFE_PIXELS = 25000000; // Circuit Breaker: Max 25 Megapixels (evita OOM)
+    const MAX_SIZE = 800; // Tamanho ideal para modelos LLM
+    
     const renderCanvas = document.createElement('canvas');
     const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
     const extractCanvas = document.createElement('canvas');
@@ -315,7 +335,6 @@ async function processBatchPhaseTwo() {
 
         let pdfDoc = null;
         try {
-            // Recarrega o PDF sob demanda para processamento gráfico
             pdfDoc = await pdfjsLib.getDocument({ data: fileEntry.arrayBuffer }).promise;
             
             const queueByPage = fileEntry.imageQueue.reduce((acc, item) => {
@@ -330,17 +349,30 @@ async function processBatchPhaseTwo() {
                 await page.getOperatorList(); 
 
                 for (const item of imagesArr) {
-                    updateStatus(`Extraindo imagem ${processedCount + 1} de ${totalImages} do lote...`, false);
+                    updateStatus(`Extraindo imagem ${processedCount + 1} de ${totalImages}...`, false);
                     progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
+                    logDebug(`Processando: ${item.imageName}`);
+                    
+                    // Respeita o Event Loop nativo (evita freeze da UI sem delays artificiais)
                     await yieldToMain();
 
                     try {
-                        const img = await new Promise((resolve) => page.objs.get(item.imgId, resolve));
+                        const img = await withTimeout(
+                            new Promise((resolve) => page.objs.get(item.imgId, resolve)), 
+                            8000, 
+                            "Timeout ao carregar imagem"
+                        );
+                        
                         if (img) {
                             let drawWidth = img.width || 800;
                             let drawHeight = img.height || 800;
-                            const MAX_SIZE = AppState.isFastMode ? 1000 : 1600;
+                            
+                            // Circuit Breaker: Proteção contra imagens digitalizadas gigantes
+                            if ((drawWidth * drawHeight) > MAX_SAFE_PIXELS) {
+                                throw new Error("Imagem excede o limite de memória seguro e foi ignorada.");
+                            }
 
+                            // Downscale proporcional para a IA
                             if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
                                 const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
                                 drawWidth = Math.round(drawWidth * ratio);
@@ -362,25 +394,33 @@ async function processBatchPhaseTwo() {
 
                             const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
                             zip.file(item.imageName, blob);
+                            
+                            // GERENCIAMENTO ATIVO DE MEMÓRIA (Destruição dos Buffers)
+                            // Zerar a dimensão obriga o Garbage Collector a liberar a RAM imediatamente.
+                            renderCanvas.width = 0;
+                            renderCanvas.height = 0;
+                            extractCanvas.width = 0;
+                            extractCanvas.height = 0;
                         }
                     } catch (imgErr) {
-                        console.warn(`Erro na extração de ${item.imageName}`, imgErr);
+                        logDebug(`Erro na extração de ${item.imageName}: ${imgErr.message}`, true);
+                        zip.file(`${item.imageName}_FALHA.txt`, "Falha técnica: A imagem excedeu o limite de memória ou estava corrompida no PDF.");
                     }
                     processedCount++;
                 }
                 page.cleanup();
             }
         } catch (err) {
-            console.error(`Erro ao carregar renderizações para ${fileEntry.baseFileName}`, err);
+            logDebug(`Erro fatal no PDF ${fileEntry.baseFileName}`, true);
         } finally {
-            if (pdfDoc) {
-                await pdfDoc.destroy();
-            }
+            if (pdfDoc) await pdfDoc.destroy();
         }
     }
 
-    updateStatus("Gerando arquivo ZIP final...", false);
-    const zipBlob = await zip.generateAsync({ type: "blob", compression: AppState.isFastMode ? "STORE" : "DEFLATE" }, (meta) => {
+    logDebug("Iniciando empacotamento ZIP (Compressão STORE para máxima performance)...");
+    
+    // Mudança Crítica: Compressão STORE impede gargalo de CPU em JPEGs
+    const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" }, (meta) => {
         if (meta.percent > 0) {
             progressBar.style.width = `${85 + (meta.percent / 100) * 15}%`;
             updateStatus(`Criando ZIP: ${Math.round(meta.percent)}%`, false);
@@ -390,7 +430,7 @@ async function processBatchPhaseTwo() {
     progressBar.style.width = '100%';
     setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
     
-    actionFeedbackMsg.textContent = "Processamento em lote concluído com sucesso!";
+    actionFeedbackMsg.textContent = "Processamento concluído com sucesso!";
     btnDownloadZip.style.display = 'inline-block';
     btnDownloadTxtAgain.style.display = 'inline-block';
     downloadActionArea.style.display = 'block';
