@@ -1,476 +1,225 @@
 // Configuração do PDF.js Web Worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-// DOM Elements: Básicos
+// ============================================================================
+// STATE & CONFIG
+// ============================================================================
+let pdfDoc = null;
+let currentPageNum = 1;
+let currentRenderTask = null;
+let activePageReference = null; // Guarda a referência para limpeza (Memory Leak Fix)
+let capturedSnippets = [];
+let pendingSelectionText = "";
+
+// Elementos DOM
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
-const statusArea = document.getElementById('status-area');
-const progressContainer = document.getElementById('progress-container');
-const progressBar = document.getElementById('progress-bar');
-
-// DOM Elements: Configuração
-const fastModeCheckbox = document.getElementById('fast-mode');
-const removeSignaturesCheckbox = document.getElementById('remove-signatures');
-const customFootersTextarea = document.getElementById('custom-footers');
-const textOnlyToggle = document.getElementById('text-only-toggle');
-
-// DOM Elements: Ações / UI
-const downloadActionArea = document.getElementById('download-action-area');
-const actionFeedbackMsg = document.getElementById('action-feedback-msg');
-const btnProcessImagesLater = document.getElementById('btn-process-images-later');
-const btnDownloadZip = document.getElementById('btn-download-zip');
-const btnDownloadTxtAgain = document.getElementById('btn-download-txt-again');
+const configPanel = document.getElementById('config-panel');
+const workspace = document.getElementById('curation-workspace');
+const canvas = document.getElementById('pdf-canvas');
+const ctx = canvas.getContext('2d');
+const pageContainer = document.getElementById('pdf-page-container');
+const textLayerDiv = document.getElementById('text-layer');
+const tooltip = document.getElementById('selection-tooltip');
+const snippetsList = document.getElementById('snippets-list');
+const emptyState = document.getElementById('empty-state');
+const btnExport = document.getElementById('btn-export-txt');
+const btnPrev = document.getElementById('btn-prev');
+const btnNext = document.getElementById('btn-next');
 
 // ============================================================================
-// Eventos de Drag & Drop e Clique (Atualizado para múltiplos arquivos)
+// INICIALIZAÇÃO DO ARQUIVO
 // ============================================================================
 dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
-dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('dragover');
-    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || file.type !== "application/pdf") return alert("Por favor, selecione um arquivo PDF.");
+    
+    dropZone.style.display = 'none';
+    configPanel.style.display = 'block';
+    workspace.style.display = 'block';
+    
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        document.getElementById('page-indicator').textContent = `Página 1 / ${pdfDoc.numPages}`;
+        renderPage(1);
+    } catch (err) {
+        console.error("Erro ao ler PDF:", err);
+        alert("Erro ao processar o arquivo PDF.");
+    }
 });
-fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) handleFiles(e.target.files);
-});
 
 // ============================================================================
-// Helpers & Logging
+// MOTOR DE RENDERIZAÇÃO E GERENCIAMENTO DE MEMÓRIA (Core Fix)
 // ============================================================================
-const debugConsole = document.getElementById('debug-console');
-const debugLogsWrapper = document.getElementById('debug-logs-wrapper');
-
-function logDebug(msg, isError = false) {
-    if (!debugConsole || !debugLogsWrapper) return;
-    debugConsole.style.display = 'block';
-    const time = new Date().toLocaleTimeString();
-    
-    // Performance: O(1) DOM Insertion para evitar Reflow Thrashing
-    const logNode = document.createElement('p');
-    logNode.textContent = `[${time}] ${msg}`;
-    if (isError) logNode.style.color = '#EF4444'; // Vermelho em erros
-    
-    debugLogsWrapper.appendChild(logNode);
-    debugConsole.scrollTop = debugConsole.scrollHeight; // Auto-scroll
-}
-
-const withTimeout = (promise, ms, errorMsg) => {
-    let timer;
-    const timeoutPromise = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(errorMsg)), ms);
-    });
-    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
-};
-
-async function yieldToMain() {
-    return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-}
-
-function escapeRegExp(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function buildSanitizationRules() {
-    const rules = [];
-    if (removeSignaturesCheckbox.checked) {
-        rules.push(/\s*Documento assinado eletronicamente por [^,\n]+, em \d{2}\/\d{2}\/\d{4}, às \d{2}:\d{2}:\d{2}(?:\s*-\s*[a-f0-9]+)?\s*/gi);
+async function renderPage(num) {
+    if (currentRenderTask) {
+        currentRenderTask.cancel(); // Cancela renderização pendente se usuário clicou rápido
     }
-    const customBlocks = customFootersTextarea.value;
-    if (customBlocks && customBlocks.trim() !== "") {
-        const blocks = customBlocks.split('---').map(b => b.trim()).filter(b => b.length > 0);
-        for (const block of blocks) {
-            rules.push(new RegExp(`\\s*${escapeRegExp(block)}\\s*`, 'gi'));
-        }
+
+    // MEMORY LEAK FIX: Limpa a página anterior da memória
+    if (activePageReference) {
+        activePageReference.cleanup();
     }
-    return rules;
-}
-
-function sanitizePageText(text, compiledRules) {
-    let cleaned = text;
-    for (const regex of compiledRules) {
-        cleaned = cleaned.replace(regex, '\n\n');
-    }
-    return cleaned;
-}
-
-function normalizeImageData(rawData, width, height) {
-    const expectedLength = width * height * 4;
-    if (rawData.length === expectedLength) return new Uint8ClampedArray(rawData);
-
-    const normalized = new Uint8ClampedArray(expectedLength);
-    let j = 0;
-    if (rawData.length === width * height * 3) {
-        for (let i = 0; i < rawData.length; i += 3) {
-            normalized[j++] = rawData[i]; normalized[j++] = rawData[i + 1];
-            normalized[j++] = rawData[i + 2]; normalized[j++] = 255;
-        }
-    } else if (rawData.length === width * height) {
-        for (let i = 0; i < rawData.length; i++) {
-            normalized[j++] = rawData[i]; normalized[j++] = rawData[i];
-            normalized[j++] = rawData[i]; normalized[j++] = 255;
-        }
-    } else {
-        throw new Error(`Matriz inválida`);
-    }
-    return normalized;
-}
-
-function updateStatus(message, isError) {
-    statusArea.textContent = message;
-    statusArea.style.color = isError ? "#dc2626" : "var(--text-muted)";
-}
-
-// ============================================================================
-// State Machine (Atualizada para Lote de Arquivos)
-// ============================================================================
-let AppState = {
-    files: [],           // Fila de arquivos para processamento
-    processedFiles: [],  // Lista de arquivos processados com metadados para as imagens { baseFileName, fullText, imageQueue, arrayBuffer }
-    isFastMode: true
-};
-
-function resetState() {
-    AppState = { 
-        files: [], 
-        processedFiles: [], 
-        isFastMode: fastModeCheckbox.checked 
-    };
-    
-    downloadActionArea.style.display = 'none';
-    btnProcessImagesLater.style.display = 'none';
-    btnDownloadZip.style.display = 'none';
-    btnDownloadTxtAgain.style.display = 'none';
-    actionFeedbackMsg.textContent = '';
-}
-
-// Helper para acionar download individual de arquivo de texto
-function triggerIndividualTxtDownload(fileName, textContent) {
-    const txtBlob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
-    const txtLink = document.createElement("a");
-    txtLink.href = URL.createObjectURL(txtBlob);
-    txtLink.download = `${fileName}_transcrito.txt`;
-    txtLink.click();
-}
-
-// ============================================================================
-// Core Logic: Entrada de Múltiplos Arquivos
-// ============================================================================
-async function handleFiles(fileList) {
-    const files = Array.from(fileList).filter(f => f.type === "application/pdf");
-    if (files.length === 0) { 
-        updateStatus("Por favor, envie arquivos PDF válidos.", true); 
-        return; 
-    }
-    
-    resetState();
-    AppState.files = files;
-    AppState.isFastMode = fastModeCheckbox.checked;
-    
-    updateStatus(`Iniciando lote de ${files.length} arquivo(s)...`, false);
-    progressContainer.style.display = 'block';
-    progressBar.style.width = '2%';
 
     try {
-        await processBatchPhaseOne();
-    } catch (error) {
-        console.error("Erro fatal no lote:", error);
-        updateStatus("Erro crítico na leitura dos arquivos em lote.", true);
+        const page = await pdfDoc.getPage(num);
+        activePageReference = page;
+        
+        // Escala responsiva baseada em um tamanho confortável
+        const viewport = page.getViewport({ scale: 1.4 }); 
+        
+        // Dimensiona os contêineres lógicos (O CSS cuidará do visual na tela)
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        pageContainer.style.width = `${viewport.width}px`;
+        pageContainer.style.height = `${viewport.height}px`;
+
+        // Renderiza o visual
+        const renderContext = { canvasContext: ctx, viewport: viewport };
+        currentRenderTask = page.render(renderContext);
+        await currentRenderTask.promise;
+
+        // Renderiza a Camada de Texto Otimizada (Alinhamento Correto)
+        const textContent = await page.getTextContent();
+        textLayerDiv.innerHTML = ''; // Limpa camada DOM anterior
+        
+        pdfjsLib.renderTextLayer({
+            textContent: textContent,
+            container: textLayerDiv,
+            viewport: viewport,
+            textDivs: []
+        });
+
+        // Atualiza UI
+        currentPageNum = num;
+        document.getElementById('page-indicator').textContent = `Página ${num} / ${pdfDoc.numPages}`;
+        btnPrev.disabled = num <= 1;
+        btnNext.disabled = num >= pdfDoc.numPages;
+
+    } catch (err) {
+        if (err.name !== 'RenderingCancelledException') {
+            console.error("Erro de renderização:", err);
+        }
     }
 }
 
+// Navegação de Páginas
+btnPrev.addEventListener('click', () => { if (currentPageNum > 1) renderPage(currentPageNum - 1); });
+btnNext.addEventListener('click', () => { if (currentPageNum < pdfDoc.numPages) renderPage(currentPageNum + 1); });
+
 // ============================================================================
-// FASE 1: Extração de Texto Individual por Arquivo (Sequencial para Performance)
+// MOTOR DE SELEÇÃO E UX (Eventos de Mouse Confiáveis)
 // ============================================================================
-async function processBatchPhaseOne() {
-    const sanitizationRules = buildSanitizationRules();
+pageContainer.addEventListener('mouseup', (e) => {
+    // Usamos setTimeout(0) para garantir que o navegador atualizou a seleção
+    setTimeout(() => {
+        const selection = window.getSelection();
+        const selectedText = selection.toString().trim();
 
-    for (let i = 0; i < AppState.files.length; i++) {
-        const file = AppState.files[i];
-        const baseFileName = file.name.replace(/\.[^/.]+$/, "");
-        
-        updateStatus(`[${i + 1}/${AppState.files.length}] Lendo: ${file.name}...`, false);
-        await yieldToMain();
+        if (selectedText.length > 2 && textLayerDiv.contains(selection.anchorNode)) {
+            // Sanitização Inteligente (Limpeza de Ruído para a IA)
+            // Remove quebras de linha que possuem hífen (ex: traba-\nlhador -> trabalhador)
+            pendingSelectionText = selectedText.replace(/-\s*\n\s*/g, '').replace(/\n/g, ' ');
 
-        let pdfDoc = null;
-        let textResult = "";
-        const imageQueue = [];
-
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            const numPages = pdfDoc.numPages;
-
-            for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-                // Cálculo de progresso proporcional ao lote e às páginas do arquivo atual
-                const fileProgress = (pageNum / numPages);
-                const totalProgress = ((i + fileProgress) / AppState.files.length) * 50;
-                progressBar.style.width = `${totalProgress}%`;
-                updateStatus(`[${i + 1}/${AppState.files.length}] ${baseFileName} - Pág ${pageNum}/${numPages}`, false);
-                await yieldToMain();
-
-                let pageText = "";
-                try {
-                    const page = await pdfDoc.getPage(pageNum);
-                    
-                    // 1. Extração de Texto
-                    const textContent = await withTimeout(page.getTextContent(), 5000, "Timeout texto");
-                    pageText = textContent.items.map(item => item.str).join(' ');
-                    pageText = sanitizePageText(pageText, sanitizationRules);
-
-                    // 2. Mapeamento de Imagens
-                    const operatorList = await withTimeout(page.getOperatorList(), 5000, "Timeout operadores");
-                    const OPS = pdfjsLib.OPS;
-                    let imageCounterPage = 1;
-
-                    for (let j = 0; j < operatorList.fnArray.length; j++) {
-                        const fn = operatorList.fnArray[j];
-                        if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
-                            const imgId = operatorList.argsArray[j][0];
-                            const imageName = `${baseFileName}_PAG_${String(pageNum).padStart(2, '0')}_IMG_${String(imageCounterPage).padStart(2, '0')}.jpg`;
-                            
-                            pageText += `\n\n[IMAGEM EXTRAÍDA: ${imageName}]\n\n`;
-                            imageQueue.push({ pageNum, imgId, imageName });
-                            imageCounterPage++;
-                        }
-                    }
-                    page.cleanup(); 
-                } catch (err) {
-                    console.warn(`Erro na Pág ${pageNum} do arquivo ${file.name}.`, err);
-                }
-                textResult += `--- INÍCIO DA PÁGINA ${pageNum} ---\n${pageText.trim()}\n\n`;
-            }
-
-            // Armazena no estado do lote para a posterior etapa visual
-            AppState.processedFiles.push({
-                baseFileName,
-                fullText: textResult,
-                imageQueue,
-                arrayBuffer
-            });
-
-            // Dispara imediatamente o download do TXT específico deste arquivo
-            triggerIndividualTxtDownload(baseFileName, textResult);
-
-        } catch (err) {
-            console.error(`Erro ao carregar o arquivo ${file.name}:`, err);
-        } finally {
-            if (pdfDoc) {
-                await pdfDoc.destroy(); // Garante liberação imediata de memória
-            }
+            // Posicionamento do Tooltip baseado no retângulo da seleção
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            
+            tooltip.style.top = `${rect.top + window.scrollY - 45}px`;
+            tooltip.style.left = `${rect.left + window.scrollX + (rect.width/2) - 60}px`; // Centralizado na seleção
+            tooltip.style.display = 'block';
+        } else {
+            tooltip.style.display = 'none';
         }
+    }, 0);
+});
+
+// Oculta tooltip se clicar em qualquer lugar fora do texto selecionado
+document.addEventListener('mousedown', (e) => {
+    if (e.target !== tooltip && !tooltip.contains(e.target)) {
+        tooltip.style.display = 'none';
     }
+});
 
-    const totalImagesMapped = AppState.processedFiles.reduce((sum, f) => sum + f.imageQueue.length, 0);
+// ============================================================================
+// CRIAÇÃO SEGURA NO DOM (Prevenção XSS) E INLINE EDITING
+// ============================================================================
+tooltip.addEventListener('click', () => {
+    if (!pendingSelectionText) return;
+    
+    // Oculta tooltip e limpa seleção visual
+    tooltip.style.display = 'none';
+    window.getSelection().removeAllRanges();
 
-    // Verificação de fluxo
-    if (textOnlyToggle.checked) {
-        progressBar.style.width = '100%';
-        progressContainer.style.display = 'none';
-        
-        btnDownloadTxtAgain.style.display = 'inline-block';
-        btnDownloadTxtAgain.onclick = () => {
-            AppState.processedFiles.forEach(f => triggerIndividualTxtDownload(f.baseFileName, f.fullText));
+    // Adiciona ao estado e atualiza UI
+    const newSnippet = { titulo: "Tópico em Análise", texto: pendingSelectionText };
+    capturedSnippets.push(newSnippet);
+    
+    renderSnippetsList();
+    
+    // Auto-focus no último card criado (Inline Editing UX)
+    const inputs = snippetsList.querySelectorAll('.snippet-input-title');
+    if(inputs.length > 0) {
+        inputs[inputs.length - 1].select();
+    }
+});
+
+function renderSnippetsList() {
+    emptyState.style.display = capturedSnippets.length > 0 ? 'none' : 'block';
+    btnExport.disabled = capturedSnippets.length === 0;
+    
+    // Limpa os cards anteriores para reconstrução segura
+    Array.from(snippetsList.children).forEach(child => {
+        if (child.id !== 'empty-state') child.remove();
+    });
+
+    capturedSnippets.forEach((snippet, index) => {
+        // PREVENÇÃO XSS: Usando createElement ao invés de innerHTML
+        const card = document.createElement('div');
+        card.className = 'snippet-card';
+
+        const inputTitle = document.createElement('input');
+        inputTitle.type = 'text';
+        inputTitle.className = 'snippet-input-title';
+        inputTitle.value = snippet.titulo;
+        inputTitle.addEventListener('input', (e) => {
+            capturedSnippets[index].titulo = e.target.value; // Vincula alteração ao estado
+        });
+
+        const textContent = document.createElement('div');
+        textContent.className = 'snippet-text-content';
+        textContent.textContent = snippet.texto; // Injeção segura de nós de texto
+
+        const btnRemove = document.createElement('button');
+        btnRemove.className = 'btn-remove-snippet';
+        btnRemove.textContent = 'Excluir Trecho';
+        btnRemove.onclick = () => {
+            capturedSnippets.splice(index, 1);
+            renderSnippetsList();
         };
 
-        if (totalImagesMapped > 0) {
-            updateStatus(`Extração de texto concluída para todos os ${AppState.files.length} arquivos!`, false);
-            actionFeedbackMsg.textContent = `${totalImagesMapped} imagens mapeadas no total. Deseja processá-las agora?`;
-            btnProcessImagesLater.style.display = 'inline-block';
-            downloadActionArea.style.display = 'block';
-            
-            btnProcessImagesLater.onclick = async () => {
-                btnProcessImagesLater.style.display = 'none';
-                btnDownloadTxtAgain.style.display = 'none';
-                actionFeedbackMsg.textContent = '';
-                await processBatchPhaseTwo();
-            };
-        } else {
-            updateStatus("Processo finalizado. Nenhuma imagem encontrada nos arquivos do lote.", false);
-            downloadActionArea.style.display = 'block';
-        }
-    } else {
-        await processBatchPhaseTwo();
-    }
+        card.appendChild(inputTitle);
+        card.appendChild(textContent);
+        card.appendChild(btnRemove);
+        
+        snippetsList.appendChild(card);
+    });
 }
 
 // ============================================================================
-// FASE 2: Processamento das Imagens do Lote (Compilação em ZIP único)
+// EXPORTAÇÃO FINAL
 // ============================================================================
-async function processBatchPhaseTwo() {
-    const totalImages = AppState.processedFiles.reduce((sum, f) => sum + f.imageQueue.length, 0);
-    
-    if (totalImages === 0) {
-        updateStatus(`Pronto! Processo finalizado (sem imagens detectadas nos arquivos).`, false);
-        progressBar.style.width = '100%';
-        setTimeout(() => { progressContainer.style.display = 'none'; }, 3000);
-        return;
-    }
-
-    updateStatus(`Iniciando processamento gráfico de ${totalImages} imagens no lote...`, false);
-    progressContainer.style.display = 'block';
-    downloadActionArea.style.display = 'none'; 
-    
-    const zip = new JSZip();
-    
-    AppState.processedFiles.forEach(f => {
-        zip.file(`${f.baseFileName}_transcrito.txt`, f.fullText);
+btnExport.addEventListener('click', () => {
+    let finalTxt = "=== ARQUIVO DE CURADORIA PARA ANÁLISE IA ===\n\n";
+    capturedSnippets.forEach(s => {
+        finalTxt += `[TÓPICO: ${s.titulo.toUpperCase()}]\n${s.texto}\n\n`;
     });
-    
-    // Configurações focadas em IA e Memória
-    const imageQuality = AppState.isFastMode ? 0.60 : 0.85;
-    const MAX_SAFE_PIXELS = 25000000; // Circuit Breaker: Max 25 Megapixels (evita OOM)
-    const MAX_SIZE = 800; // Tamanho ideal para modelos LLM
-    
-    const renderCanvas = document.createElement('canvas');
-    const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
-    const extractCanvas = document.createElement('canvas');
-    const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
 
-    let processedCount = 0;
-
-    for (const fileEntry of AppState.processedFiles) {
-        if (fileEntry.imageQueue.length === 0) continue;
-
-        let pdfDoc = null;
-        try {
-            pdfDoc = await pdfjsLib.getDocument({ data: fileEntry.arrayBuffer }).promise;
-            
-            const queueByPage = fileEntry.imageQueue.reduce((acc, item) => {
-                if (!acc[item.pageNum]) acc[item.pageNum] = [];
-                acc[item.pageNum].push(item);
-                return acc;
-            }, {});
-
-            for (const [pageNumStr, imagesArr] of Object.entries(queueByPage)) {
-                const pageNum = parseInt(pageNumStr);
-                const page = await pdfDoc.getPage(pageNum);
-                
-                logDebug(`Renderizando Pág ${pageNum} para capturar ${imagesArr.length} imagens...`);
-                await yieldToMain();
-
-                // 1. Criamos uma tela invisível ("O Palco")
-                const viewport = page.getViewport({ scale: 1.5 }); // Escala ideal para não perder texto dos prints
-                const interceptCanvas = document.createElement('canvas');
-                const interceptCtx = interceptCanvas.getContext('2d');
-                interceptCanvas.width = viewport.width;
-                interceptCanvas.height = viewport.height;
-
-                const capturedCanvases = [];
-                // FILTRO INTELIGENTE: Ignora ícones minúsculos, linhas e logos. Pega só fotos e prints.
-                const isTargetImage = (w, h) => w > 100 && h > 100;
-
-                // 2. O TRUQUE DE INTERCEPTAÇÃO ("Hackeando o Pincel do Navegador")
-                const origDrawImage = interceptCtx.drawImage;
-                interceptCtx.drawImage = function(img, ...args) {
-                    if (img && img.width && img.height && isTargetImage(img.width, img.height)) {
-                        // No exato milissegundo que ele desenhar a foto, fazemos uma cópia!
-                        const tCanvas = document.createElement('canvas');
-                        tCanvas.width = img.width; 
-                        tCanvas.height = img.height;
-                        tCanvas.getContext('2d').drawImage(img, 0, 0);
-                        capturedCanvases.push(tCanvas);
-                    }
-                    origDrawImage.apply(this, [img, ...args]);
-                };
-
-                const origPutImageData = interceptCtx.putImageData;
-                interceptCtx.putImageData = function(imgData, ...args) {
-                    if (imgData && imgData.width && imgData.height && isTargetImage(imgData.width, imgData.height)) {
-                        const tCanvas = document.createElement('canvas');
-                        tCanvas.width = imgData.width; 
-                        tCanvas.height = imgData.height;
-                        tCanvas.getContext('2d').putImageData(imgData, 0, 0);
-                        capturedCanvases.push(tCanvas);
-                    }
-                    origPutImageData.apply(this, [imgData, ...args]);
-                };
-
-                // 3. Mandamos o PDF desenhar a página (O interceptador fará o roubo automático aqui)
-                try {
-                    await page.render({ canvasContext: interceptCtx, viewport }).promise;
-                } catch(renderErr) {
-                    logDebug(`Aviso na pág ${pageNum}: ${renderErr.message}`, true);
-                }
-
-                // 4. Relacionamos as imagens roubadas com a nossa fila e jogamos no ZIP
-                for (let i = 0; i < imagesArr.length; i++) {
-                    const item = imagesArr[i];
-                    const sourceCanvas = capturedCanvases[i]; // Associa a imagem capturada à tag TXT
-
-                    updateStatus(`Salvando imagem ${processedCount + 1} de ${totalImages}...`, false);
-                    progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
-                    logDebug(`Empacotando: ${item.imageName}`);
-                    await yieldToMain();
-
-                    if (sourceCanvas) {
-                        try {
-                            let drawWidth = sourceCanvas.width;
-                            let drawHeight = sourceCanvas.height;
-
-                            // Adequação de tamanho para a Inteligência Artificial (Max 800px)
-                            if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
-                                const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
-                                drawWidth = Math.round(drawWidth * ratio);
-                                drawHeight = Math.round(drawHeight * ratio);
-                            }
-
-                            renderCanvas.width = drawWidth;
-                            renderCanvas.height = drawHeight;
-                            renderCtx.drawImage(sourceCanvas, 0, 0, drawWidth, drawHeight);
-
-                            const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
-                            zip.file(item.imageName, blob);
-                            
-                            // Limpeza instantânea de Memória
-                            renderCanvas.width = 0; renderCanvas.height = 0;
-                            sourceCanvas.width = 0; sourceCanvas.height = 0;
-                        } catch (e) {
-                            logDebug(`Erro ao converter ${item.imageName}`, true);
-                        }
-                    } else {
-                        // Se for um ícone, carimbo pequeno de assinatura, ou falha severa visual.
-                        logDebug(`A imagem ${item.imageName} era pequena demais ou invisível.`, true);
-                        zip.file(`${item.imageName}_IGNORADA.txt`, "Imagem ignorada pois era menor que 100px (geralmente ícones ou carimbos de sistema).");
-                    }
-                    processedCount++;
-                }
-
-                // Limpa o palco
-                interceptCanvas.width = 0; 
-                interceptCanvas.height = 0;
-                page.cleanup();
-            }
-        } catch (err) {
-            logDebug(`Erro fatal no PDF ${fileEntry.baseFileName}`, true);
-        } finally {
-            if (pdfDoc) await pdfDoc.destroy();
-        }
-    }
-
-    logDebug("Iniciando empacotamento ZIP (Compressão STORE para máxima performance)...");
-    
-    // Mudança Crítica: Compressão STORE impede gargalo de CPU em JPEGs
-    const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" }, (meta) => {
-        if (meta.percent > 0) {
-            progressBar.style.width = `${85 + (meta.percent / 100) * 15}%`;
-            updateStatus(`Criando ZIP: ${Math.round(meta.percent)}%`, false);
-        }
-    });
-    
-    progressBar.style.width = '100%';
-    setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
-    
-    actionFeedbackMsg.textContent = "Processamento concluído com sucesso!";
-    btnDownloadZip.style.display = 'inline-block';
-    btnDownloadTxtAgain.style.display = 'inline-block';
-    downloadActionArea.style.display = 'block';
-
-    btnDownloadZip.onclick = () => {
-        const zipLink = document.createElement("a");
-        zipLink.href = URL.createObjectURL(zipBlob);
-        zipLink.download = `Lote_Processado_${AppState.files.length}_PDFs.zip`;
-        zipLink.click();
-    };
-}
+    const blob = new Blob([finalTxt], { type: "text/plain;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Curadoria_Peticao_Flash_IA.txt`;
+    link.click();
+});

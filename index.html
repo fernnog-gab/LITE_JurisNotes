@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <link rel="stylesheet" href="style.css">
@@ -29,64 +30,51 @@
             <polyline points="17 8 12 3 7 8"></polyline>
             <line x1="12" y1="3" x2="12" y2="15"></line>
         </svg>
-        <div class="drop-zone-text">Clique para selecionar ou arraste os PDFs dos processos aqui</div>
-        <input type="file" id="file-input" class="file-input" accept="application/pdf" multiple>
+        <div class="drop-zone-text">Selecione ou arraste o PDF do Processo aqui</div>
+        <input type="file" id="file-input" class="file-input" accept="application/pdf">
     </div>
 
-    <div class="config-panel">
-        <div class="config-title">Inteligência de Limpeza e Performance</div>
-    
-        <div class="config-group" style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px dashed var(--border-color);">
-            <div class="toggle-container">
-                <label class="toggle-switch">
-                    <input type="checkbox" id="text-only-toggle" checked>
-                    <span class="toggle-slider"></span>
-                </label>
-                <div class="toggle-label-content">
-                    <strong>Modo Rápido (Priorizar Texto)</strong>
-                    <p>Baixa o TXT em segundos mantendo as tags visuais. Permite extrair as imagens posteriormente com 1 clique.</p>
-                </div>
+    <div class="config-panel" id="config-panel" style="display: none;">
+        <div class="config-title">Inteligência de Curadoria para Modelos Flash</div>
+        <p style="font-size: 13px; color: var(--text-muted); margin: 0;">Otimizado para economia de tokens. Selecione o texto diretamente no visualizador para capturar.</p>
+    </div>
+
+    <!-- Novo Workspace de Curadoria -->
+    <div id="curation-workspace" style="display: none; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+        
+        <div class="workspace-header" style="display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center;">
+            <div class="pdf-controls" style="display: flex; align-items: center; gap: 10px;">
+                <button id="btn-prev" class="btn-secondary" disabled>◀ Anterior</button>
+                <span id="page-indicator" style="font-size: 14px; font-weight: 600; min-width: 100px; text-align: center;">Página 0 / 0</span>
+                <button id="btn-next" class="btn-secondary" disabled>Próxima ▶</button>
             </div>
         </div>
-    
-        <div class="config-group">
-            <label class="checkbox-label" style="color: var(--primary-color); font-weight: 600;">
-                <input type="checkbox" id="fast-mode" checked>
-                ⚡ Ativar Modo Turbo (Extração visual mais rápida, ZIP levemente maior)
-            </label>
-        </div>
-        
-        <div class="config-group">
-            <label class="checkbox-label">
-                <input type="checkbox" id="remove-signatures" checked>
-                Excluir assinaturas eletrônicas padrão do PJe
-            </label>
-        </div>
-        
-        <div class="config-group">
-            <label for="custom-footers" class="textarea-label">
-                Excluir rodapés e termos repetitivos (separe por <code>---</code>):
-            </label>
-            <textarea id="custom-footers" class="custom-textarea" placeholder="Exemplo:&#10;Este documento é cópia do original...&#10;---&#10;Firmado por assinatura eletrônica..."></textarea>
+
+        <div class="workspace-grid" style="display: flex; gap: 20px; height: 65vh; min-height: 500px;">
+            <!-- Visualizador PDF -->
+            <div id="pdf-viewer-wrapper" style="position: relative; border: 1px solid var(--border-color); border-radius: var(--radius); flex: 2; overflow: auto; background: #e5e5e5; display: flex; justify-content: center;">
+                <!-- Contêiner relativo para alinhar Canvas e TextLayer -->
+                <div id="pdf-page-container" style="position: relative; margin: 10px auto; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                    <canvas id="pdf-canvas" style="display: block;"></canvas>
+                    <div id="text-layer" class="textLayer"></div>
+                </div>
+            </div>
+
+            <!-- Painel Lateral -->
+            <div id="snippets-panel" style="flex: 1; background: var(--bg-color); padding: 15px; border-radius: var(--radius); border: 1px solid var(--border-color); display: flex; flex-direction: column;">
+                <h3 style="margin-top: 0; font-size: 16px; color: var(--primary-color);">Trechos Capturados</h3>
+                <div id="snippets-list" style="flex-grow: 1; overflow-y: auto; margin-bottom: 15px; display: flex; flex-direction: column; gap: 12px; padding-right: 5px;">
+                    <p id="empty-state" style="font-size: 13px; color: var(--text-muted); text-align: center; margin-top: 50px;">Selecione um texto no PDF à esquerda para começar a extração limpa.</p>
+                </div>
+                <button id="btn-export-txt" class="btn-primary" style="width: 100%;" disabled>Baixar TXT Compilado</button>
+            </div>
         </div>
     </div>
 
-    <div id="status-area"></div>
-    <div class="progress-bar-container" id="progress-container">
-        <div class="progress-bar" id="progress-bar"></div>
-    </div>
-
-    <!-- NOVO BLOCO: Console de Diagnóstico -->
-    <div id="debug-console" style="display: none; margin-top: 15px; padding: 10px; background: #1F2937; color: #10B981; font-family: monospace; font-size: 11px; border-radius: var(--radius); max-height: 120px; overflow-y: auto; text-align: left; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);">
-        <div id="debug-logs-wrapper"></div>
-    </div>
-
-    <div id="download-action-area" style="display: none; text-align: center; margin-top: 20px;">
-        <p id="action-feedback-msg" style="font-size: 14px; margin-bottom: 12px; color: var(--primary-color); font-weight: 500;"></p>
-        <button id="btn-download-txt-again" class="btn-secondary" style="display: none; margin-right: 10px;">Re-baixar TXT</button>
-        <button id="btn-process-images-later" class="btn-primary" style="display: none;">Extrair e Baixar Imagens (ZIP)</button>
-        <button id="btn-download-zip" class="btn-primary" style="display: none;">Baixar ZIP Final</button>
-    </div>
+    <!-- Tooltip de Captura -->
+    <button id="selection-tooltip" class="btn-primary" style="display: none; position: absolute; z-index: 1000; padding: 8px 16px; font-size: 13px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-radius: 20px; cursor: pointer;">
+        + Capturar Trecho
+    </button>
 </div>
 
 </body>
