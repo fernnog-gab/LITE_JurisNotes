@@ -343,113 +343,103 @@ async function processBatchPhaseTwo() {
                 return acc;
             }, {});
 
-            // Criamos uma tela invisível apenas para "enganar" o PDF.js
-            const fakePageCanvas = document.createElement('canvas');
-            const fakePageCtx = fakePageCanvas.getContext('2d');
-
             for (const [pageNumStr, imagesArr] of Object.entries(queueByPage)) {
                 const pageNum = parseInt(pageNumStr);
                 const page = await pdfDoc.getPage(pageNum);
                 
-                logDebug(`Desbloqueando recursos da página ${pageNum}...`);
+                logDebug(`Renderizando Pág ${pageNum} para capturar ${imagesArr.length} imagens...`);
                 await yieldToMain();
 
-                // TRUQUE MÁGICO: Mandamos ele renderizar a página numa escala pequena.
-                // Isso OBRIGA o motor interno do PDF a decodificar 100% das imagens da página na memória.
-                const viewport = page.getViewport({ scale: 0.8 });
-                fakePageCanvas.width = viewport.width;
-                fakePageCanvas.height = viewport.height;
-                
-                try {
-                    await page.render({ canvasContext: fakePageCtx, viewport }).promise;
-                } catch (renderErr) {
-                    logDebug(`Aviso pág ${pageNum}: ${renderErr.message} (Tentando extrair mesmo assim)`, true);
-                }
+                // 1. Criamos uma tela invisível ("O Palco")
+                const viewport = page.getViewport({ scale: 1.5 }); // Escala ideal para não perder texto dos prints
+                const interceptCanvas = document.createElement('canvas');
+                const interceptCtx = interceptCanvas.getContext('2d');
+                interceptCanvas.width = viewport.width;
+                interceptCanvas.height = viewport.height;
 
-                // Agora as imagens estão frescas e 100% decodificadas!
-                const operatorList = await page.getOperatorList(); 
-                const OPS = pdfjsLib.OPS;
-                let currentIndex = 0;
+                const capturedCanvases = [];
+                // FILTRO INTELIGENTE: Ignora ícones minúsculos, linhas e logos. Pega só fotos e prints.
+                const isTargetImage = (w, h) => w > 100 && h > 100;
 
-                for (let j = 0; j < operatorList.fnArray.length; j++) {
-                    const fn = operatorList.fnArray[j];
-                    
-                    if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
-                        const freshImgId = operatorList.argsArray[j][0];
-                        const item = imagesArr[currentIndex];
-
-                        if (item) {
-                            updateStatus(`Extraindo imagem ${processedCount + 1} de ${totalImages}...`, false);
-                            progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
-                            
-                            logDebug(`Salvando: ${item.imageName}`);
-                            await yieldToMain();
-
-                            try {
-                                // Pega a imagem instantaneamente do cache destravado
-                                const img = await withTimeout(
-                                    new Promise((resolve) => page.objs.get(freshImgId, resolve)), 
-                                    3000, 
-                                    "A imagem não foi carregada para a memória."
-                                );
-                                
-                                if (img) {
-                                    let drawWidth = img.width || 800;
-                                    let drawHeight = img.height || 800;
-                                    
-                                    if ((drawWidth * drawHeight) > MAX_SAFE_PIXELS) {
-                                        throw new Error("Imagem gigante ignorada por segurança de RAM.");
-                                    }
-
-                                    if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
-                                        const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
-                                        drawWidth = Math.round(drawWidth * ratio);
-                                        drawHeight = Math.round(drawHeight * ratio);
-                                    }
-
-                                    renderCanvas.width = drawWidth; 
-                                    renderCanvas.height = drawHeight;
-                                    
-                                    // ADAPTADOR UNIVERSAL: Aceita qualquer loucura de formato do PDF.js
-                                    let imageToDraw = null;
-                                    if (img instanceof HTMLElement || img instanceof ImageBitmap) {
-                                        imageToDraw = img; // Formato Web Nativo
-                                    } else if (img.bitmap) {
-                                        imageToDraw = img.bitmap; // Formato Interno 1
-                                    } else if (img.data) {
-                                        // Formato Interno 2 (Matriz de Pixels Brutos)
-                                        extractCanvas.width = img.width; 
-                                        extractCanvas.height = img.height;
-                                        const safePixels = normalizeImageData(img.data, img.width, img.height);
-                                        extractCtx.putImageData(new ImageData(safePixels, img.width, img.height), 0, 0);
-                                        imageToDraw = extractCanvas;
-                                    } else if (img.canvas) {
-                                        imageToDraw = img.canvas; // Formato Interno 3 (Pré-desenhado)
-                                    }
-
-                                    if (!imageToDraw) throw new Error("O PDF gerou um formato de imagem alienígena.");
-
-                                    // Pinta, converte para JPG leve e coloca no ZIP
-                                    renderCtx.drawImage(imageToDraw, 0, 0, drawWidth, drawHeight);
-                                    const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
-                                    zip.file(item.imageName, blob);
-                                    
-                                    // Reciclagem de memória
-                                    renderCanvas.width = 0; renderCanvas.height = 0;
-                                    extractCanvas.width = 0; extractCanvas.height = 0;
-                                }
-                            } catch (imgErr) {
-                                logDebug(`Erro na ${item.imageName}: ${imgErr.message}`, true);
-                                zip.file(`${item.imageName}_FALHA.txt`, `Erro ao processar: ${imgErr.message}`);
-                            }
-                            processedCount++;
-                            currentIndex++;
-                        }
+                // 2. O TRUQUE DE INTERCEPTAÇÃO ("Hackeando o Pincel do Navegador")
+                const origDrawImage = interceptCtx.drawImage;
+                interceptCtx.drawImage = function(img, ...args) {
+                    if (img && img.width && img.height && isTargetImage(img.width, img.height)) {
+                        // No exato milissegundo que ele desenhar a foto, fazemos uma cópia!
+                        const tCanvas = document.createElement('canvas');
+                        tCanvas.width = img.width; 
+                        tCanvas.height = img.height;
+                        tCanvas.getContext('2d').drawImage(img, 0, 0);
+                        capturedCanvases.push(tCanvas);
                     }
+                    origDrawImage.apply(this, [img, ...args]);
+                };
+
+                const origPutImageData = interceptCtx.putImageData;
+                interceptCtx.putImageData = function(imgData, ...args) {
+                    if (imgData && imgData.width && imgData.height && isTargetImage(imgData.width, imgData.height)) {
+                        const tCanvas = document.createElement('canvas');
+                        tCanvas.width = imgData.width; 
+                        tCanvas.height = imgData.height;
+                        tCanvas.getContext('2d').putImageData(imgData, 0, 0);
+                        capturedCanvases.push(tCanvas);
+                    }
+                    origPutImageData.apply(this, [imgData, ...args]);
+                };
+
+                // 3. Mandamos o PDF desenhar a página (O interceptador fará o roubo automático aqui)
+                try {
+                    await page.render({ canvasContext: interceptCtx, viewport }).promise;
+                } catch(renderErr) {
+                    logDebug(`Aviso na pág ${pageNum}: ${renderErr.message}`, true);
                 }
-                // Limpa o truque da página falsa
-                fakePageCanvas.width = 0;
-                fakePageCanvas.height = 0;
+
+                // 4. Relacionamos as imagens roubadas com a nossa fila e jogamos no ZIP
+                for (let i = 0; i < imagesArr.length; i++) {
+                    const item = imagesArr[i];
+                    const sourceCanvas = capturedCanvases[i]; // Associa a imagem capturada à tag TXT
+
+                    updateStatus(`Salvando imagem ${processedCount + 1} de ${totalImages}...`, false);
+                    progressBar.style.width = `${50 + (processedCount / totalImages) * 35}%`;
+                    logDebug(`Empacotando: ${item.imageName}`);
+                    await yieldToMain();
+
+                    if (sourceCanvas) {
+                        try {
+                            let drawWidth = sourceCanvas.width;
+                            let drawHeight = sourceCanvas.height;
+
+                            // Adequação de tamanho para a Inteligência Artificial (Max 800px)
+                            if (drawWidth > MAX_SIZE || drawHeight > MAX_SIZE) {
+                                const ratio = Math.min(MAX_SIZE / drawWidth, MAX_SIZE / drawHeight);
+                                drawWidth = Math.round(drawWidth * ratio);
+                                drawHeight = Math.round(drawHeight * ratio);
+                            }
+
+                            renderCanvas.width = drawWidth;
+                            renderCanvas.height = drawHeight;
+                            renderCtx.drawImage(sourceCanvas, 0, 0, drawWidth, drawHeight);
+
+                            const blob = await new Promise(res => renderCanvas.toBlob(res, 'image/jpeg', imageQuality));
+                            zip.file(item.imageName, blob);
+                            
+                            // Limpeza instantânea de Memória
+                            renderCanvas.width = 0; renderCanvas.height = 0;
+                            sourceCanvas.width = 0; sourceCanvas.height = 0;
+                        } catch (e) {
+                            logDebug(`Erro ao converter ${item.imageName}`, true);
+                        }
+                    } else {
+                        // Se for um ícone, carimbo pequeno de assinatura, ou falha severa visual.
+                        logDebug(`A imagem ${item.imageName} era pequena demais ou invisível.`, true);
+                        zip.file(`${item.imageName}_IGNORADA.txt`, "Imagem ignorada pois era menor que 100px (geralmente ícones ou carimbos de sistema).");
+                    }
+                    processedCount++;
+                }
+
+                // Limpa o palco
+                interceptCanvas.width = 0; 
+                interceptCanvas.height = 0;
                 page.cleanup();
             }
         } catch (err) {
