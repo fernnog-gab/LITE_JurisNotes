@@ -450,3 +450,40 @@ svg { flex-shrink: 0; }
 }
 
 .custom-select:focus, .custom-input:focus { border-color: var(--primary-color); }
+
+/* ==========================================================================
+   Linhas de arquivo dinâmicas do Modal (Lote)
+   ========================================================================== */
+.modal-file-row {
+    display: grid;
+    grid-template-columns: 2.2fr 1.8fr 1.5fr;
+    gap: 12px;
+    align-items: center;
+    background: #f8fafc;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+}
+
+.modal-file-row:last-child {
+    margin-bottom: 0;
+}
+
+.modal-file-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Responsividade para telas estreitas ou tablets verticais */
+@media (max-width: 600px) {
+    .modal-file-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 12px;
+    }
+}

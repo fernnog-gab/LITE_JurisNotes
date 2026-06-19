@@ -20,15 +20,15 @@
 
 <div class="container" style="max-width: 95vw; width: 100%; padding: 20px;">
     
-    <!-- Tela Inicial (Apenas o Dropzone, sem cabeçalhos) -->
+    <!-- Tela Inicial (Dropzone atualizada para processamento em lote) -->
     <div class="drop-zone" id="drop-zone" style="margin-top: 5vh; border-width: 3px;">
         <svg class="icon-svg" viewBox="0 0 24 24" style="width: 64px; height: 64px;">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="17 8 12 3 7 8"></polyline>
             <line x1="12" y1="3" x2="12" y2="15"></line>
         </svg>
-        <div class="drop-zone-text" style="font-size: 18px;">Arraste o PDF do Processo aqui ou clique</div>
-        <input type="file" id="file-input" class="file-input" accept="application/pdf">
+        <div class="drop-zone-text" style="font-size: 18px;">Arraste um ou mais PDFs do Processo aqui ou clique</div>
+        <input type="file" id="file-input" class="file-input" accept="application/pdf" multiple>
     </div>
 
     <!-- Workspace Minimalista -->
@@ -36,10 +36,15 @@
         
         <div class="workspace-header" style="display: flex; justify-content: space-between; margin-bottom: 12px; align-items: center; background: #f9fafb; padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border-color);">
             
-            <div class="pdf-controls" style="display: flex; align-items: center; gap: 8px;">
+            <div class="pdf-controls" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <button id="btn-home" class="btn-secondary" style="padding: 6px 10px; font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 4px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg> Home
                 </button>
+                
+                <!-- Menu de seleção rápida para alternar entre arquivos carregados -->
+                <select id="active-file-select" class="custom-select" style="width: 200px; padding: 4px 8px; font-size: 12px; height: 30px; display: none;">
+                </select>
+
                 <button id="btn-prev" class="btn-secondary" style="padding: 6px 10px; font-size: 12px;">◀ Ant</button>
                 
                 <div style="display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; margin: 0 10px;">
@@ -75,7 +80,7 @@
                 
                 <button id="btn-extract-full" class="btn-secondary" style="width: 100%; margin-bottom: 15px; border-style: dashed; display: flex; justify-content: center; align-items: center; gap: 8px;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                    Extrair Todo o PDF
+                    Extrair Textos em Lote
                 </button>
 
                 <div id="marker-status-panel" style="background: #f8fafc; border: 1px dashed var(--text-muted); border-radius: 6px; padding: 10px; margin-bottom: 15px; text-align: center;">
@@ -99,36 +104,19 @@
     </button>
 </div>
 
-<!-- Modal de Nomenclatura -->
+<!-- Modal de Nomenclatura com área dinâmica para Lote/Individual -->
 <div id="naming-modal" class="modal-overlay" style="display: none;">
-    <div class="modal-content">
-        <h3 style="margin-top: 0; color: var(--primary-color);">Identificação do Documento</h3>
-        <label class="textarea-label">Tipo de Documento:</label>
-        <select id="doc-type-select" class="custom-select">
-            <option value="Recurso_Ordinario">Recurso Ordinário</option>
-            <option value="Contrarrazoes">Contrarrazões</option>
-            <option value="Agravo_de_Peticao">Agravo de Petição</option>
-            <option value="Agravo_de_Instrumento">Agravo de Instrumento</option>
-            <option value="Embargos_de_Declaracao">Embargos de Declaração</option>
-            <option value="Sentenca">Sentença</option>
-            <option value="Outro">Outro (Digitar manualmente)</option>
-        </select>
-        <div id="party-selection-group" style="margin-top: 15px;">
-            <label class="textarea-label">Parte Relacionada:</label>
-            <select id="doc-party-select" class="custom-select">
-                <option value="Parte_Autora">Parte Autora</option>
-                <option value="Parte_Re">Parte Ré</option>
-                <option value="">Não se aplica</option>
-            </select>
+    <div class="modal-content" style="max-width: 650px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
+        <h3 style="margin-top: 0; color: var(--primary-color);">Identificação e Classificação Jurídica</h3>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px; margin-top: 4px;">Selecione o tipo de documento e informe a autoria correspondente para organização do lote.</p>
+        
+        <div id="modal-files-container" style="overflow-y: auto; flex-grow: 1; margin-bottom: 15px; padding-right: 5px;">
+            <!-- As linhas de inputs dos arquivos serão inseridas dinamicamente aqui -->
         </div>
-        <div id="custom-name-group" style="margin-top: 15px; display: none;">
-            <label class="textarea-label">Nome Manual <span style="color:red">*</span></label>
-            <input type="text" id="doc-custom-input" class="custom-input" placeholder="Obrigatório. Ex: Peticao_Inicial">
-            <small id="custom-error" style="color: red; display: none; font-size: 11px;">Por favor, digite um nome.</small>
-        </div>
-        <div style="display: flex; gap: 10px; margin-top: 25px; justify-content: flex-end;">
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end; padding-top: 15px; border-top: 1px solid var(--border-color);">
             <button id="btn-cancel-modal" class="btn-secondary">Cancelar</button>
-            <button id="btn-confirm-modal" class="btn-primary">Confirmar</button>
+            <button id="btn-confirm-modal" class="btn-primary">Confirmar e Seguir</button>
         </div>
     </div>
 </div>
