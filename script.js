@@ -35,7 +35,6 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
     if (!file || file.type !== "application/pdf") return alert("Por favor, selecione um arquivo PDF.");
     
     document.getElementById('drop-zone').style.display = 'none';
-    document.getElementById('config-panel').style.display = 'block';
     document.getElementById('curation-workspace').style.display = 'block';
     
     try {
@@ -267,13 +266,84 @@ function renderSnippetsList() {
     });
 }
 
-// Exportação Final
+// ============================================================================
+// NOVAS LÓGICAS DE FLUXO (Navegação Rápida, Exportação e Extração Total)
+// ============================================================================
+
+// 1. Botão de Retorno à Primeira Página
+const btnFirstPage = document.getElementById('btn-first-page');
+if (btnFirstPage) {
+    btnFirstPage.addEventListener('click', () => {
+        if (pdfDoc && currentPageNum !== 1) renderPage(1);
+    });
+}
+
+// 2. Lógica de Nomenclatura Dinâmica na Exportação de Recortes
 document.getElementById('btn-export-txt').addEventListener('click', () => {
     let finalTxt = "=== ARQUIVO DE CURADORIA EM LOTE ===\n\n";
-    capturedSnippets.forEach(s => { finalTxt += `[TÓPICO: ${s.titulo.toUpperCase()}]\n${s.texto}\n\n`; });
+    capturedSnippets.forEach(s => { 
+        finalTxt += `[TÓPICO: ${s.titulo.toUpperCase()}]\n${s.texto}\n\n`; 
+    });
+    
+    // NOME DINÂMICO: Usa o título do primeiro recorte capturado (ou um fallback seguro)
+    let fileNameBase = capturedSnippets[0]?.titulo || "Extracao_Documento";
+    // Sanitiza o nome do arquivo (remove caracteres que o Windows/Mac não aceitam)
+    let safeFileName = fileNameBase.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
+
     const blob = new Blob([finalTxt], { type: "text/plain;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `Extração_Contexto_PDF.txt`;
+    link.download = `${safeFileName}.txt`;
     link.click();
+});
+
+// 3. NOVO RECURSO: Extração Total do PDF
+const btnExtractFull = document.getElementById('btn-extract-full');
+btnExtractFull.addEventListener('click', async () => {
+    if (!pdfDoc) return;
+
+    // A janelinha que pede o nome batizará o arquivo TXT
+    const topicName = prompt("Qual será o nome deste documento?", "Processo_Completo");
+    if (!topicName) return; // Usuário cancelou
+
+    const safeFileName = topicName.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
+
+    // UI Feedback (Trava a tela durante o processamento longo)
+    const panel = document.getElementById('snippets-panel');
+    const overlay = document.createElement('div');
+    overlay.className = 'extracting-overlay';
+    overlay.textContent = "Lendo todo o documento. Aguarde...";
+    panel.appendChild(overlay);
+
+    try {
+        let fullText = `=== EXTRATO COMPLETO: ${topicName.toUpperCase()} ===\n\n`;
+        
+        // Loop varrendo da primeira à última página
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+            const tempPage = await pdfDoc.getPage(i);
+            const textContent = await tempPage.getTextContent();
+            
+            // Junta as strings, preservando espaços básicos
+            let pageText = textContent.items.map(item => item.str).join(' ');
+            
+            // Quebra de linha básica por página para organização
+            fullText += `--- PÁGINA ${i} ---\n${pageText}\n\n`;
+            
+            // Pequeno respiro para o navegador não congelar a UI (Yield to Main Thread)
+            if (i % 5 === 0) await new Promise(res => setTimeout(res, 10));
+        }
+
+        // Gera e dispara o Download
+        const blob = new Blob([fullText], { type: "text/plain;charset=utf-8" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${safeFileName}.txt`;
+        link.click();
+
+    } catch (err) {
+        console.error("Erro na extração completa:", err);
+        alert("Falha ao extrair o documento completo.");
+    } finally {
+        overlay.remove(); // Remove o aviso de carregamento
+    }
 });

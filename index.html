@@ -18,56 +18,46 @@
 </head>
 <body>
 
-<div class="container">
-    <div class="header">
-        <h1>Conversor de Petições PJe</h1>
-        <p>Extraia texto e imagens de processos judiciais para formato TXT otimizado para análise por Inteligência Artificial. Processamento 100% local.</p>
-    </div>
-
-    <div class="drop-zone" id="drop-zone">
-        <svg class="icon-svg" viewBox="0 0 24 24">
+<div class="container" style="max-width: 95vw; width: 100%; padding: 20px;">
+    
+    <!-- Tela Inicial (Apenas o Dropzone, sem cabeçalhos) -->
+    <div class="drop-zone" id="drop-zone" style="margin-top: 5vh; border-width: 3px;">
+        <svg class="icon-svg" viewBox="0 0 24 24" style="width: 64px; height: 64px;">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="17 8 12 3 7 8"></polyline>
             <line x1="12" y1="3" x2="12" y2="15"></line>
         </svg>
-        <div class="drop-zone-text">Selecione ou arraste o PDF do Processo aqui</div>
+        <div class="drop-zone-text" style="font-size: 18px;">Arraste o PDF do Processo aqui</div>
         <input type="file" id="file-input" class="file-input" accept="application/pdf">
     </div>
 
-    <div class="config-panel" id="config-panel" style="display: none;">
-        <div class="config-title">Inteligência de Curadoria para Modelos Flash</div>
-        <p style="font-size: 13px; color: var(--text-muted); margin: 0;">Otimizado para economia de tokens. Selecione o texto diretamente no visualizador para capturar.</p>
-    </div>
-
-    <!-- Novo Workspace de Curadoria Avançada (Máquina de Estados) -->
-    <div id="curation-workspace" style="display: none; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+    <!-- Workspace Minimalista -->
+    <div id="curation-workspace" style="display: none;">
         
-        <!-- Nova Barra de Ferramentas: Zoom e Navegação Direta -->
-        <div class="workspace-header" style="display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center; background: #f3f4f6; padding: 10px; border-radius: var(--radius); border: 1px solid var(--border-color);">
+        <div class="workspace-header" style="display: flex; justify-content: space-between; margin-bottom: 12px; align-items: center; background: #f9fafb; padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border-color);">
             
             <div class="pdf-controls" style="display: flex; align-items: center; gap: 8px;">
-                <button id="btn-prev" class="btn-secondary" style="padding: 6px 12px; font-size: 12px;">◀ Ant</button>
+                <button id="btn-first-page" class="btn-secondary" style="padding: 6px 10px; font-size: 12px; font-weight: bold;">|◀ Início</button>
+                <button id="btn-prev" class="btn-secondary" style="padding: 6px 10px; font-size: 12px;">◀ Ant</button>
                 
-                <!-- Formulário de Navegação Direta -->
-                <div style="display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500;">
-                    Pág <input type="number" id="page-input" min="1" value="1" style="width: 50px; text-align: center; padding: 4px; border: 1px solid var(--border-color); border-radius: 4px;"> 
+                <div style="display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; margin: 0 10px;">
+                    Pág <input type="number" id="page-input" min="1" value="1" style="width: 45px; text-align: center; padding: 4px; border: 1px solid var(--border-color); border-radius: 4px;"> 
                     de <span id="page-total">0</span>
                 </div>
                 
-                <button id="btn-next" class="btn-secondary" style="padding: 6px 12px; font-size: 12px;">Próx ▶</button>
+                <button id="btn-next" class="btn-secondary" style="padding: 6px 10px; font-size: 12px;">Próx ▶</button>
             </div>
 
-            <!-- Controles de Zoom -->
             <div class="zoom-controls" style="display: flex; gap: 6px;">
-                <button id="btn-zoom-out" class="btn-secondary" title="Reduzir Zoom" style="padding: 6px 10px; font-size: 14px;">🔍 -</button>
-                <span id="zoom-indicator" style="font-size: 12px; font-weight: 600; width: 45px; text-align: center; line-height: 30px;">130%</span>
-                <button id="btn-zoom-in" class="btn-secondary" title="Aumentar Zoom" style="padding: 6px 10px; font-size: 14px;">🔍 +</button>
+                <button id="btn-zoom-out" class="btn-secondary" style="padding: 4px 10px;">🔍 -</button>
+                <span id="zoom-indicator" style="font-size: 12px; font-weight: 600; width: 40px; text-align: center; line-height: 28px;">100%</span>
+                <button id="btn-zoom-in" class="btn-secondary" style="padding: 4px 10px;">🔍 +</button>
             </div>
         </div>
 
-        <div class="workspace-grid" style="display: flex; gap: 20px; height: 65vh; min-height: 550px;">
+        <div class="workspace-grid" style="display: flex; gap: 15px; height: 80vh; min-height: 600px;">
             <!-- Visualizador PDF -->
-            <div id="pdf-viewer-wrapper" style="position: relative; border: 1px solid var(--border-color); border-radius: var(--radius); flex: 2; overflow: auto; background: #9ca3af; display: flex; justify-content: center; align-items: flex-start; padding: 20px;">
+            <div id="pdf-viewer-wrapper" style="position: relative; border: 1px solid var(--border-color); border-radius: var(--radius); flex: 7; overflow: auto; background: #9ca3af; display: flex; justify-content: center; align-items: flex-start; padding: 20px;">
                 <div id="pdf-page-container" style="position: relative; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
                     <canvas id="pdf-canvas" style="display: block;"></canvas>
                     <div id="text-layer" class="textLayer"></div>
@@ -75,27 +65,28 @@
             </div>
 
             <!-- Painel Lateral -->
-            <div id="snippets-panel" style="flex: 1; background: var(--bg-color); padding: 15px; border-radius: var(--radius); border: 1px solid var(--border-color); display: flex; flex-direction: column;">
+            <div id="snippets-panel" style="flex: 3; background: var(--bg-color); padding: 15px; border-radius: var(--radius); border: 1px solid var(--border-color); display: flex; flex-direction: column;">
                 
-                <!-- Painel de Status do Marcador -->
+                <button id="btn-extract-full" class="btn-secondary" style="width: 100%; margin-bottom: 15px; border-style: dashed;">
+                    📄 Extrair Todo o PDF (TXT)
+                </button>
+
                 <div id="marker-status-panel" style="background: #e0f2f1; border: 1px solid #004d40; border-radius: 6px; padding: 10px; margin-bottom: 15px; text-align: center;">
                     <p id="marker-instruction" style="margin: 0; font-size: 12px; font-weight: 600; color: #004d40;">
                         🟢 Aguardando: Selecione o texto para marcar o INÍCIO.
                     </p>
-                    <button id="btn-cancel-marker" class="btn-secondary" style="display: none; width: 100%; margin-top: 8px; padding: 4px; font-size: 11px; color: #dc2626; border-color: #dc2626;">Cancelar Marcação Atual</button>
+                    <button id="btn-cancel-marker" class="btn-secondary" style="display: none; width: 100%; margin-top: 8px; padding: 4px; font-size: 11px; color: #dc2626; border-color: #dc2626;">Cancelar</button>
                 </div>
-
-                <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 16px; color: var(--primary-color);">Trechos Capturados</h3>
                 
                 <div id="snippets-list" style="flex-grow: 1; overflow-y: auto; margin-bottom: 15px; display: flex; flex-direction: column; gap: 12px; padding-right: 5px;">
-                    <p id="empty-state" style="font-size: 13px; color: var(--text-muted); text-align: center; margin-top: 50px;">Nenhum trecho extraído ainda.</p>
+                    <p id="empty-state" style="font-size: 13px; color: var(--text-muted); text-align: center; margin-top: 50px;">Nenhum trecho em foco.</p>
                 </div>
-                <button id="btn-export-txt" class="btn-primary" style="width: 100%;" disabled>Baixar TXT Compilado</button>
+                <button id="btn-export-txt" class="btn-primary" style="width: 100%;" disabled>Baixar Recortes</button>
             </div>
         </div>
     </div>
-
-    <!-- Tooltip Dinâmico -->
+    
+    <!-- Tooltip Dinâmico (Preservado) -->
     <button id="selection-tooltip" class="btn-primary" style="display: none; position: absolute; z-index: 1000; padding: 8px 16px; font-size: 13px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-radius: 20px; cursor: pointer;">
         📍 Definir Início
     </button>
