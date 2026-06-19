@@ -2,89 +2,84 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
 // ============================================================================
-// STATE & CONFIG
+// STATE & CONFIG (Máquina de Estados de Marcadores)
 // ============================================================================
 let pdfDoc = null;
 let currentPageNum = 1;
+let currentScale = 1.3; // Zoom Padrão
 let currentRenderTask = null;
-let activePageReference = null; // Guarda a referência para limpeza (Memory Leak Fix)
+let activePageReference = null;
+
 let capturedSnippets = [];
 let pendingSelectionText = "";
 
+// Estado da Extração
+let extractState = {
+    step: 'idle', // 'idle' (esperando inicio) | 'awaiting_end' (esperando fim)
+    start: { page: null, text: null },
+    end: { page: null, text: null }
+};
+
 // Elementos DOM
-const dropZone = document.getElementById('drop-zone');
-const fileInput = document.getElementById('file-input');
-const configPanel = document.getElementById('config-panel');
-const workspace = document.getElementById('curation-workspace');
-const canvas = document.getElementById('pdf-canvas');
-const ctx = canvas.getContext('2d');
-const pageContainer = document.getElementById('pdf-page-container');
-const textLayerDiv = document.getElementById('text-layer');
+const pageInput = document.getElementById('page-input');
+const pageTotalSpan = document.getElementById('page-total');
 const tooltip = document.getElementById('selection-tooltip');
-const snippetsList = document.getElementById('snippets-list');
-const emptyState = document.getElementById('empty-state');
-const btnExport = document.getElementById('btn-export-txt');
-const btnPrev = document.getElementById('btn-prev');
-const btnNext = document.getElementById('btn-next');
+const markerInstruction = document.getElementById('marker-instruction');
+const btnCancelMarker = document.getElementById('btn-cancel-marker');
 
 // ============================================================================
-// INICIALIZAÇÃO DO ARQUIVO
+// INICIALIZAÇÃO
 // ============================================================================
-dropZone.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', async (e) => {
+document.getElementById('file-input').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file || file.type !== "application/pdf") return alert("Por favor, selecione um arquivo PDF.");
     
-    dropZone.style.display = 'none';
-    configPanel.style.display = 'block';
-    workspace.style.display = 'block';
+    document.getElementById('drop-zone').style.display = 'none';
+    document.getElementById('config-panel').style.display = 'block';
+    document.getElementById('curation-workspace').style.display = 'block';
     
     try {
         const arrayBuffer = await file.arrayBuffer();
         pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        document.getElementById('page-indicator').textContent = `Página 1 / ${pdfDoc.numPages}`;
+        pageTotalSpan.textContent = pdfDoc.numPages;
+        pageInput.max = pdfDoc.numPages;
         renderPage(1);
     } catch (err) {
         console.error("Erro ao ler PDF:", err);
-        alert("Erro ao processar o arquivo PDF.");
     }
 });
 
+document.getElementById('drop-zone').addEventListener('click', () => {
+    document.getElementById('file-input').click();
+});
+
 // ============================================================================
-// MOTOR DE RENDERIZAÇÃO E GERENCIAMENTO DE MEMÓRIA (Core Fix)
+// ZOOM E RENDERIZAÇÃO
 // ============================================================================
 async function renderPage(num) {
-    if (currentRenderTask) {
-        currentRenderTask.cancel(); // Cancela renderização pendente se usuário clicou rápido
-    }
-
-    // MEMORY LEAK FIX: Limpa a página anterior da memória
-    if (activePageReference) {
-        activePageReference.cleanup();
-    }
+    if (currentRenderTask) currentRenderTask.cancel();
+    if (activePageReference) activePageReference.cleanup();
 
     try {
         const page = await pdfDoc.getPage(num);
         activePageReference = page;
+        const viewport = page.getViewport({ scale: currentScale }); 
         
-        // Escala responsiva baseada em um tamanho confortável
-        const viewport = page.getViewport({ scale: 1.4 }); 
-        
-        // Dimensiona os contêineres lógicos (O CSS cuidará do visual na tela)
+        const canvas = document.getElementById('pdf-canvas');
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        pageContainer.style.width = `${viewport.width}px`;
-        pageContainer.style.height = `${viewport.height}px`;
+        
+        const container = document.getElementById('pdf-page-container');
+        container.style.width = `${viewport.width}px`;
+        container.style.height = `${viewport.height}px`;
 
-        // Renderiza o visual
-        const renderContext = { canvasContext: ctx, viewport: viewport };
-        currentRenderTask = page.render(renderContext);
+        const ctx = canvas.getContext('2d');
+        currentRenderTask = page.render({ canvasContext: ctx, viewport: viewport });
         await currentRenderTask.promise;
 
-        // Renderiza a Camada de Texto Otimizada (Alinhamento Correto)
+        const textLayerDiv = document.getElementById('text-layer');
         const textContent = await page.getTextContent();
-        textLayerDiv.innerHTML = ''; // Limpa camada DOM anterior
-        
+        textLayerDiv.innerHTML = ''; 
         pdfjsLib.renderTextLayer({
             textContent: textContent,
             container: textLayerDiv,
@@ -92,43 +87,47 @@ async function renderPage(num) {
             textDivs: []
         });
 
-        // Atualiza UI
         currentPageNum = num;
-        document.getElementById('page-indicator').textContent = `Página ${num} / ${pdfDoc.numPages}`;
-        btnPrev.disabled = num <= 1;
-        btnNext.disabled = num >= pdfDoc.numPages;
+        pageInput.value = num;
+        document.getElementById('zoom-indicator').textContent = `${Math.round(currentScale * 100)}%`;
 
     } catch (err) {
-        if (err.name !== 'RenderingCancelledException') {
-            console.error("Erro de renderização:", err);
-        }
+        if (err.name !== 'RenderingCancelledException') console.error("Erro:", err);
     }
 }
 
-// Navegação de Páginas
-btnPrev.addEventListener('click', () => { if (currentPageNum > 1) renderPage(currentPageNum - 1); });
-btnNext.addEventListener('click', () => { if (currentPageNum < pdfDoc.numPages) renderPage(currentPageNum + 1); });
+// Controles Navegação Direta e Botões
+document.getElementById('btn-prev').addEventListener('click', () => { if (currentPageNum > 1) renderPage(currentPageNum - 1); });
+document.getElementById('btn-next').addEventListener('click', () => { if (currentPageNum < pdfDoc.numPages) renderPage(currentPageNum + 1); });
+
+pageInput.addEventListener('change', (e) => {
+    let target = parseInt(e.target.value);
+    if (target >= 1 && target <= pdfDoc.numPages) renderPage(target);
+    else e.target.value = currentPageNum; // Reverte se inválido
+});
+
+// Controles Zoom
+document.getElementById('btn-zoom-in').addEventListener('click', () => { currentScale += 0.2; renderPage(currentPageNum); });
+document.getElementById('btn-zoom-out').addEventListener('click', () => { if (currentScale > 0.5) { currentScale -= 0.2; renderPage(currentPageNum); }});
 
 // ============================================================================
-// MOTOR DE SELEÇÃO E UX (Eventos de Mouse Confiáveis)
+// MÁQUINA DE ESTADO DOS MARCADORES E TOOLTIP
 // ============================================================================
-pageContainer.addEventListener('mouseup', (e) => {
-    // Usamos setTimeout(0) para garantir que o navegador atualizou a seleção
+document.getElementById('pdf-page-container').addEventListener('mouseup', () => {
     setTimeout(() => {
         const selection = window.getSelection();
         const selectedText = selection.toString().trim();
 
-        if (selectedText.length > 2 && textLayerDiv.contains(selection.anchorNode)) {
-            // Sanitização Inteligente (Limpeza de Ruído para a IA)
-            // Remove quebras de linha que possuem hífen (ex: traba-\nlhador -> trabalhador)
-            pendingSelectionText = selectedText.replace(/-\s*\n\s*/g, '').replace(/\n/g, ' ');
-
-            // Posicionamento do Tooltip baseado no retângulo da seleção
-            const range = selection.getRangeAt(0);
-            const rect = range.getBoundingClientRect();
+        if (selectedText.length > 2 && document.getElementById('text-layer').contains(selection.anchorNode)) {
+            pendingSelectionText = selectedText.replace(/\n/g, ' '); // Guarda texto limpo
             
+            // Muda a aparência do Tooltip com base no estado
+            tooltip.textContent = extractState.step === 'idle' ? '📍 Definir Início' : '🛑 Definir Fim e Extrair';
+            tooltip.style.backgroundColor = extractState.step === 'idle' ? 'var(--primary-color)' : '#dc2626';
+
+            const rect = selection.getRangeAt(0).getBoundingClientRect();
             tooltip.style.top = `${rect.top + window.scrollY - 45}px`;
-            tooltip.style.left = `${rect.left + window.scrollX + (rect.width/2) - 60}px`; // Centralizado na seleção
+            tooltip.style.left = `${rect.left + window.scrollX + (rect.width/2) - 70}px`; 
             tooltip.style.display = 'block';
         } else {
             tooltip.style.display = 'none';
@@ -136,90 +135,145 @@ pageContainer.addEventListener('mouseup', (e) => {
     }, 0);
 });
 
-// Oculta tooltip se clicar em qualquer lugar fora do texto selecionado
 document.addEventListener('mousedown', (e) => {
-    if (e.target !== tooltip && !tooltip.contains(e.target)) {
-        tooltip.style.display = 'none';
-    }
+    if (e.target !== tooltip && !tooltip.contains(e.target)) tooltip.style.display = 'none';
 });
 
-// ============================================================================
-// CRIAÇÃO SEGURA NO DOM (Prevenção XSS) E INLINE EDITING
-// ============================================================================
-tooltip.addEventListener('click', () => {
-    if (!pendingSelectionText) return;
-    
-    // Oculta tooltip e limpa seleção visual
+btnCancelMarker.addEventListener('click', () => {
+    resetExtractionState();
+});
+
+function resetExtractionState() {
+    extractState = { step: 'idle', start: { page: null, text: null }, end: { page: null, text: null } };
+    markerInstruction.textContent = "🟢 Aguardando: Selecione o texto para marcar o INÍCIO.";
+    btnCancelMarker.style.display = 'none';
+}
+
+// AÇÃO DO TOOLTIP: Avançar a máquina de estados
+tooltip.addEventListener('click', async () => {
     tooltip.style.display = 'none';
     window.getSelection().removeAllRanges();
 
-    // Adiciona ao estado e atualiza UI
-    const newSnippet = { titulo: "Tópico em Análise", texto: pendingSelectionText };
-    capturedSnippets.push(newSnippet);
-    
-    renderSnippetsList();
-    
-    // Auto-focus no último card criado (Inline Editing UX)
-    const inputs = snippetsList.querySelectorAll('.snippet-input-title');
-    if(inputs.length > 0) {
-        inputs[inputs.length - 1].select();
+    if (extractState.step === 'idle') {
+        // SET START MARKER
+        extractState.start = { page: currentPageNum, text: pendingSelectionText };
+        extractState.step = 'awaiting_end';
+        markerInstruction.textContent = `🔴 Início na pág ${currentPageNum}. Navegue e selecione o FIM.`;
+        btnCancelMarker.style.display = 'block';
+    } 
+    else if (extractState.step === 'awaiting_end') {
+        // SET END MARKER
+        if (currentPageNum < extractState.start.page) {
+            alert("A página de Fim não pode ser menor que a página de Início.");
+            return;
+        }
+        extractState.end = { page: currentPageNum, text: pendingSelectionText };
+        
+        // Pede o Tópico e Roda a Extração Profunda
+        const topicName = prompt("Trecho delimitado. Qual o nome deste Tópico?", "Novo Tópico");
+        if (topicName !== null) {
+            await processCrossPageExtraction(topicName);
+        } else {
+            resetExtractionState(); // Cancela se o usuário der esc no prompt
+        }
     }
 });
 
-function renderSnippetsList() {
-    emptyState.style.display = capturedSnippets.length > 0 ? 'none' : 'block';
-    btnExport.disabled = capturedSnippets.length === 0;
-    
-    // Limpa os cards anteriores para reconstrução segura
-    Array.from(snippetsList.children).forEach(child => {
-        if (child.id !== 'empty-state') child.remove();
-    });
+// ============================================================================
+// ALGORITMO CORE: CROSS-PAGE EXTRACTION NO BACKGROUND
+// ============================================================================
+async function processCrossPageExtraction(topicName) {
+    // UI Feedback
+    const panel = document.getElementById('snippets-panel');
+    const overlay = document.createElement('div');
+    overlay.className = 'extracting-overlay';
+    overlay.textContent = "Lendo páginas em background...";
+    panel.appendChild(overlay);
 
-    capturedSnippets.forEach((snippet, index) => {
-        // PREVENÇÃO XSS: Usando createElement ao invés de innerHTML
+    let fullExtractedText = "";
+
+    try {
+        for (let i = extractState.start.page; i <= extractState.end.page; i++) {
+            const tempPage = await pdfDoc.getPage(i);
+            const textContent = await tempPage.getTextContent();
+            // Junta as strings da página
+            let pageText = textContent.items.map(item => item.str).join(' ').replace(/\s+/g, ' '); 
+
+            if (extractState.start.page === extractState.end.page) {
+                // Mesmo Início e Fim na mesma página
+                const idxStart = pageText.indexOf(extractState.start.text);
+                const idxEnd = pageText.indexOf(extractState.end.text) + extractState.end.text.length;
+                if (idxStart !== -1 && idxEnd !== -1) fullExtractedText = pageText.substring(idxStart, idxEnd);
+                else fullExtractedText = "Aviso: Não foi possível obter correspondência exata. Texto corrompido no PDF.";
+            } 
+            else if (i === extractState.start.page) {
+                // Primeira Página: Do marcador pro final
+                const idxStart = pageText.indexOf(extractState.start.text);
+                fullExtractedText += idxStart !== -1 ? pageText.substring(idxStart) : pageText;
+                fullExtractedText += " \n\n ";
+            } 
+            else if (i === extractState.end.page) {
+                // Última Página: Do início até o marcador
+                const idxEnd = pageText.indexOf(extractState.end.text) + extractState.end.text.length;
+                fullExtractedText += idxEnd !== -1 ? pageText.substring(0, idxEnd) : pageText;
+            } 
+            else {
+                // Páginas do Meio (Pega tudo)
+                fullExtractedText += pageText + " \n\n ";
+            }
+        }
+
+        // Salva e Renderiza
+        capturedSnippets.push({ titulo: topicName, texto: fullExtractedText });
+        renderSnippetsList();
+
+    } catch (err) {
+        console.error("Erro na extração em background:", err);
+        alert("Falha na extração múltipla.");
+    } finally {
+        overlay.remove();
+        resetExtractionState();
+    }
+}
+
+// Renderização dos Snippets (Mantida segura contra XSS)
+function renderSnippetsList() {
+    const list = document.getElementById('snippets-list');
+    document.getElementById('empty-state').style.display = capturedSnippets.length > 0 ? 'none' : 'block';
+    document.getElementById('btn-export-txt').disabled = capturedSnippets.length === 0;
+    
+    Array.from(list.children).forEach(c => { if(c.id !== 'empty-state') c.remove(); });
+
+    capturedSnippets.forEach((snippet, idx) => {
         const card = document.createElement('div');
         card.className = 'snippet-card';
-
-        const inputTitle = document.createElement('input');
-        inputTitle.type = 'text';
-        inputTitle.className = 'snippet-input-title';
-        inputTitle.value = snippet.titulo;
-        inputTitle.addEventListener('input', (e) => {
-            capturedSnippets[index].titulo = e.target.value; // Vincula alteração ao estado
-        });
-
-        const textContent = document.createElement('div');
-        textContent.className = 'snippet-text-content';
-        textContent.textContent = snippet.texto; // Injeção segura de nós de texto
-
-        const btnRemove = document.createElement('button');
-        btnRemove.className = 'btn-remove-snippet';
-        btnRemove.textContent = 'Excluir Trecho';
-        btnRemove.onclick = () => {
-            capturedSnippets.splice(index, 1);
-            renderSnippetsList();
-        };
-
-        card.appendChild(inputTitle);
-        card.appendChild(textContent);
-        card.appendChild(btnRemove);
         
-        snippetsList.appendChild(card);
+        const title = document.createElement('input');
+        title.className = 'snippet-input-title';
+        title.value = snippet.titulo;
+        title.addEventListener('input', e => capturedSnippets[idx].titulo = e.target.value);
+        
+        const text = document.createElement('div');
+        text.className = 'snippet-text-content';
+        text.textContent = snippet.texto; // Proteção XSS garantida
+        
+        const btn = document.createElement('button');
+        btn.className = 'btn-remove-snippet';
+        btn.textContent = 'Excluir';
+        btn.onclick = () => { capturedSnippets.splice(idx, 1); renderSnippetsList(); };
+
+        card.append(title, text, btn);
+        list.appendChild(card);
     });
 }
 
-// ============================================================================
-// EXPORTAÇÃO FINAL
-// ============================================================================
-btnExport.addEventListener('click', () => {
-    let finalTxt = "=== ARQUIVO DE CURADORIA PARA ANÁLISE IA ===\n\n";
-    capturedSnippets.forEach(s => {
-        finalTxt += `[TÓPICO: ${s.titulo.toUpperCase()}]\n${s.texto}\n\n`;
-    });
-
+// Exportação Final
+document.getElementById('btn-export-txt').addEventListener('click', () => {
+    let finalTxt = "=== ARQUIVO DE CURADORIA EM LOTE ===\n\n";
+    capturedSnippets.forEach(s => { finalTxt += `[TÓPICO: ${s.titulo.toUpperCase()}]\n${s.texto}\n\n`; });
     const blob = new Blob([finalTxt], { type: "text/plain;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `Curadoria_Peticao_Flash_IA.txt`;
+    link.download = `Extração_Contexto_PDF.txt`;
     link.click();
 });

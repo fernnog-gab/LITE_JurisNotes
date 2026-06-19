@@ -384,3 +384,29 @@ body {
     background: #fef2f2;
     border-color: #fca5a5;
 }
+
+/* ==========================================================================
+   Controles Adicionais (Zoom, Input, Overlay)
+   ========================================================================== */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+    -webkit-appearance: none; 
+    margin: 0; 
+}
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+/* Loader de Extração Background */
+.extracting-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: 600;
+    color: var(--primary-color);
+    z-index: 50;
+    backdrop-filter: blur(2px);
+}
