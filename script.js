@@ -48,8 +48,34 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
     }
 });
 
-document.getElementById('drop-zone').addEventListener('click', () => {
-    document.getElementById('file-input').click();
+// Constantes SVG Isoladas
+const ICON_PIN = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>`;
+const ICON_CHECK = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+const ICON_STOP = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`;
+
+function updateMarkerStatus(icon, text, showCancel = false) {
+    document.getElementById('marker-icon').innerHTML = icon;
+    document.getElementById('marker-instruction').textContent = text;
+    document.getElementById('btn-cancel-marker').style.display = showCancel ? 'block' : 'none';
+}
+
+function updateTooltip(icon, text, isStop = false) {
+    document.getElementById('tooltip-icon').innerHTML = icon;
+    document.getElementById('tooltip-text').textContent = text;
+    tooltip.style.backgroundColor = isStop ? '#dc2626' : 'var(--primary-color)';
+}
+
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('click', () => document.getElementById('file-input').click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) {
+        document.getElementById('file-input').files = e.dataTransfer.files;
+        document.getElementById('file-input').dispatchEvent(new Event('change'));
+    }
 });
 
 // ============================================================================
@@ -120,9 +146,12 @@ document.getElementById('pdf-page-container').addEventListener('mouseup', () => 
         if (selectedText.length > 2 && document.getElementById('text-layer').contains(selection.anchorNode)) {
             pendingSelectionText = selectedText.replace(/\n/g, ' '); // Guarda texto limpo
             
-            // Muda a aparência do Tooltip com base no estado
-            tooltip.textContent = extractState.step === 'idle' ? '📍 Definir Início' : '🛑 Definir Fim e Extrair';
-            tooltip.style.backgroundColor = extractState.step === 'idle' ? 'var(--primary-color)' : '#dc2626';
+            // Muda a aparência do Tooltip com base no estado e via Slots Seguros
+            if (extractState.step === 'idle') {
+                updateTooltip(ICON_PIN, " Definir Início", false);
+            } else {
+                updateTooltip(ICON_STOP, " Definir Fim e Extrair", true);
+            }
 
             const rect = selection.getRangeAt(0).getBoundingClientRect();
             tooltip.style.top = `${rect.top + window.scrollY - 45}px`;
@@ -144,8 +173,7 @@ btnCancelMarker.addEventListener('click', () => {
 
 function resetExtractionState() {
     extractState = { step: 'idle', start: { page: null, text: null }, end: { page: null, text: null } };
-    markerInstruction.textContent = "🟢 Aguardando: Selecione o texto para marcar o INÍCIO.";
-    btnCancelMarker.style.display = 'none';
+    updateMarkerStatus(ICON_CHECK, " Aguardando: Selecione o texto de Início.", false);
 }
 
 // AÇÃO DO TOOLTIP: Avançar a máquina de estados
@@ -157,8 +185,7 @@ tooltip.addEventListener('click', async () => {
         // SET START MARKER
         extractState.start = { page: currentPageNum, text: pendingSelectionText };
         extractState.step = 'awaiting_end';
-        markerInstruction.textContent = `🔴 Início na pág ${currentPageNum}. Navegue e selecione o FIM.`;
-        btnCancelMarker.style.display = 'block';
+        updateMarkerStatus(ICON_STOP, ` Início na pág ${currentPageNum}. Navegue e selecione o FIM.`, true);
     } 
     else if (extractState.step === 'awaiting_end') {
         // SET END MARKER
@@ -267,48 +294,124 @@ function renderSnippetsList() {
 }
 
 // ============================================================================
-// NOVAS LÓGICAS DE FLUXO (Navegação Rápida, Exportação e Extração Total)
+// NOVAS LÓGICAS DE FLUXO (Memory Clean, Modal de Nomenclatura e Extração Total)
 // ============================================================================
 
-// 1. Botão de Retorno à Primeira Página
-const btnFirstPage = document.getElementById('btn-first-page');
-if (btnFirstPage) {
-    btnFirstPage.addEventListener('click', () => {
-        if (pdfDoc && currentPageNum !== 1) renderPage(1);
+// 1. Memory Cleanup (Prevenção de Vazamento no Botão Home)
+function destroyCurrentPDFView() {
+    if (currentRenderTask) {
+        currentRenderTask.cancel();
+        currentRenderTask = null;
+    }
+    if (activePageReference) {
+        activePageReference.cleanup(); // Libera renderização da GPU
+        activePageReference = null;
+    }
+    const canvas = document.getElementById('pdf-canvas');
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height); // Zera o Bitmap
+    document.getElementById('text-layer').innerHTML = ''; // Zera o DOM
+    pdfDoc = null; // Remove referência root
+}
+
+const btnHome = document.getElementById('btn-home');
+if (btnHome) {
+    btnHome.addEventListener('click', () => {
+        if(confirm("Voltar à tela inicial? Todo progresso de recortes não exportados será perdido.")) {
+            destroyCurrentPDFView();
+            document.getElementById('curation-workspace').style.display = 'none';
+            document.getElementById('drop-zone').style.display = 'flex';
+            document.getElementById('file-input').value = ""; 
+            capturedSnippets = [];
+            renderSnippetsList();
+            resetExtractionState();
+        }
     });
 }
 
-// 2. Lógica de Nomenclatura Dinâmica na Exportação de Recortes
-document.getElementById('btn-export-txt').addEventListener('click', () => {
-    let finalTxt = "=== ARQUIVO DE CURADORIA EM LOTE ===\n\n";
+// 2. Modal Promisified (Interceptador de Nomenclatura Seguro)
+function openNamingModal() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('naming-modal');
+        const typeSelect = document.getElementById('doc-type-select');
+        const partyGroup = document.getElementById('party-selection-group');
+        const partySelect = document.getElementById('doc-party-select');
+        const customGroup = document.getElementById('custom-name-group');
+        const customInput = document.getElementById('doc-custom-input');
+        const customError = document.getElementById('custom-error');
+        const btnCancel = document.getElementById('btn-cancel-modal');
+        const btnConfirm = document.getElementById('btn-confirm-modal');
+
+        // Setup Inicial
+        typeSelect.value = "Recurso_Ordinario";
+        partySelect.value = "Parte_Autora";
+        customInput.value = "";
+        customError.style.display = "none";
+        partyGroup.style.display = 'block';
+        customGroup.style.display = 'none';
+        modal.style.display = 'flex';
+
+        typeSelect.onchange = (e) => {
+            const val = e.target.value;
+            partyGroup.style.display = (val === 'Sentenca' || val === 'Outro') ? 'none' : 'block';
+            customGroup.style.display = (val === 'Outro') ? 'block' : 'none';
+        };
+
+        const cleanup = () => {
+            modal.style.display = 'none';
+            btnConfirm.onclick = null;
+            btnCancel.onclick = null;
+        };
+
+        btnConfirm.onclick = () => {
+            let finalName = "";
+            if (typeSelect.value === 'Outro') {
+                if (!customInput.value.trim()) {
+                    customError.style.display = "block";
+                    return; // Early return: impede a resolução se vazio
+                }
+                finalName = customInput.value.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
+            } else {
+                finalName = typeSelect.value;
+                if (partyGroup.style.display !== 'none' && partySelect.value) {
+                    finalName += `_${partySelect.value}`;
+                }
+            }
+            cleanup();
+            resolve(finalName);
+        };
+
+        btnCancel.onclick = () => {
+            cleanup();
+            resolve(null);
+        };
+    });
+}
+
+// 3. Exportação de Recortes (Com Modal)
+document.getElementById('btn-export-txt').addEventListener('click', async () => {
+    const documentName = await openNamingModal();
+    if (!documentName) return; // Usuário cancelou
+
+    let finalTxt = `=== ARQUIVO DE CURADORIA EM LOTE ===\nDOCUMENTO: ${documentName}\n\n`;
     capturedSnippets.forEach(s => { 
         finalTxt += `[TÓPICO: ${s.titulo.toUpperCase()}]\n${s.texto}\n\n`; 
     });
     
-    // NOME DINÂMICO: Usa o título do primeiro recorte capturado (ou um fallback seguro)
-    let fileNameBase = capturedSnippets[0]?.titulo || "Extracao_Documento";
-    // Sanitiza o nome do arquivo (remove caracteres que o Windows/Mac não aceitam)
-    let safeFileName = fileNameBase.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
-
     const blob = new Blob([finalTxt], { type: "text/plain;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${safeFileName}.txt`;
+    link.download = `${documentName}.txt`;
     link.click();
 });
 
-// 3. NOVO RECURSO: Extração Total do PDF
+// 4. Extração Total (Com Modal)
 const btnExtractFull = document.getElementById('btn-extract-full');
 btnExtractFull.addEventListener('click', async () => {
     if (!pdfDoc) return;
 
-    // A janelinha que pede o nome batizará o arquivo TXT
-    const topicName = prompt("Qual será o nome deste documento?", "Processo_Completo");
-    if (!topicName) return; // Usuário cancelou
+    const documentName = await openNamingModal();
+    if (!documentName) return;
 
-    const safeFileName = topicName.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
-
-    // UI Feedback (Trava a tela durante o processamento longo)
     const panel = document.getElementById('snippets-panel');
     const overlay = document.createElement('div');
     overlay.className = 'extracting-overlay';
@@ -316,34 +419,27 @@ btnExtractFull.addEventListener('click', async () => {
     panel.appendChild(overlay);
 
     try {
-        let fullText = `=== EXTRATO COMPLETO: ${topicName.toUpperCase()} ===\n\n`;
+        let fullText = `=== EXTRATO COMPLETO: ${documentName.toUpperCase()} ===\n\n`;
         
-        // Loop varrendo da primeira à última página
         for (let i = 1; i <= pdfDoc.numPages; i++) {
             const tempPage = await pdfDoc.getPage(i);
             const textContent = await tempPage.getTextContent();
-            
-            // Junta as strings, preservando espaços básicos
             let pageText = textContent.items.map(item => item.str).join(' ');
             
-            // Quebra de linha básica por página para organização
             fullText += `--- PÁGINA ${i} ---\n${pageText}\n\n`;
-            
-            // Pequeno respiro para o navegador não congelar a UI (Yield to Main Thread)
-            if (i % 5 === 0) await new Promise(res => setTimeout(res, 10));
+            if (i % 5 === 0) await new Promise(res => setTimeout(res, 10)); // Respiro UI
         }
 
-        // Gera e dispara o Download
         const blob = new Blob([fullText], { type: "text/plain;charset=utf-8" });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = `${safeFileName}.txt`;
+        link.download = `${documentName}_COMPLETO.txt`;
         link.click();
 
     } catch (err) {
         console.error("Erro na extração completa:", err);
         alert("Falha ao extrair o documento completo.");
     } finally {
-        overlay.remove(); // Remove o aviso de carregamento
+        overlay.remove();
     }
 });

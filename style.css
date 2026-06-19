@@ -424,3 +424,29 @@ input[type=number] {
     border-color: var(--primary-color);
     color: var(--primary-color);
 }
+
+/* ==========================================================================
+   Refinamentos SVG e Componentes do Modal
+   ========================================================================== */
+button { display: flex; align-items: center; justify-content: center; gap: 6px; }
+svg { flex-shrink: 0; }
+
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px);
+    display: flex; justify-content: center; align-items: center; z-index: 9999;
+}
+
+.modal-content {
+    background: var(--surface-color); padding: 24px; border-radius: var(--radius);
+    width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    border: 1px solid var(--border-color);
+}
+
+.custom-select, .custom-input {
+    width: 100%; padding: 10px; border: 1px solid var(--border-color);
+    border-radius: var(--radius); font-family: inherit; font-size: 14px;
+    color: var(--text-main); background: #fff; outline: none; transition: 0.2s;
+}
+
+.custom-select:focus, .custom-input:focus { border-color: var(--primary-color); }

@@ -27,7 +27,7 @@
             <polyline points="17 8 12 3 7 8"></polyline>
             <line x1="12" y1="3" x2="12" y2="15"></line>
         </svg>
-        <div class="drop-zone-text" style="font-size: 18px;">Arraste o PDF do Processo aqui</div>
+        <div class="drop-zone-text" style="font-size: 18px;">Arraste o PDF do Processo aqui ou clique</div>
         <input type="file" id="file-input" class="file-input" accept="application/pdf">
     </div>
 
@@ -37,7 +37,9 @@
         <div class="workspace-header" style="display: flex; justify-content: space-between; margin-bottom: 12px; align-items: center; background: #f9fafb; padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border-color);">
             
             <div class="pdf-controls" style="display: flex; align-items: center; gap: 8px;">
-                <button id="btn-first-page" class="btn-secondary" style="padding: 6px 10px; font-size: 12px; font-weight: bold;">|◀ Início</button>
+                <button id="btn-home" class="btn-secondary" style="padding: 6px 10px; font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 4px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg> Home
+                </button>
                 <button id="btn-prev" class="btn-secondary" style="padding: 6px 10px; font-size: 12px;">◀ Ant</button>
                 
                 <div style="display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; margin: 0 10px;">
@@ -49,9 +51,13 @@
             </div>
 
             <div class="zoom-controls" style="display: flex; gap: 6px;">
-                <button id="btn-zoom-out" class="btn-secondary" style="padding: 4px 10px;">🔍 -</button>
+                <button id="btn-zoom-out" class="btn-secondary" style="padding: 4px 10px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                </button>
                 <span id="zoom-indicator" style="font-size: 12px; font-weight: 600; width: 40px; text-align: center; line-height: 28px;">100%</span>
-                <button id="btn-zoom-in" class="btn-secondary" style="padding: 4px 10px;">🔍 +</button>
+                <button id="btn-zoom-in" class="btn-secondary" style="padding: 4px 10px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+                </button>
             </div>
         </div>
 
@@ -67,13 +73,14 @@
             <!-- Painel Lateral -->
             <div id="snippets-panel" style="flex: 3; background: var(--bg-color); padding: 15px; border-radius: var(--radius); border: 1px solid var(--border-color); display: flex; flex-direction: column;">
                 
-                <button id="btn-extract-full" class="btn-secondary" style="width: 100%; margin-bottom: 15px; border-style: dashed;">
-                    📄 Extrair Todo o PDF (TXT)
+                <button id="btn-extract-full" class="btn-secondary" style="width: 100%; margin-bottom: 15px; border-style: dashed; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    Extrair Todo o PDF
                 </button>
 
-                <div id="marker-status-panel" style="background: #e0f2f1; border: 1px solid #004d40; border-radius: 6px; padding: 10px; margin-bottom: 15px; text-align: center;">
-                    <p id="marker-instruction" style="margin: 0; font-size: 12px; font-weight: 600; color: #004d40;">
-                        🟢 Aguardando: Selecione o texto para marcar o INÍCIO.
+                <div id="marker-status-panel" style="background: #f8fafc; border: 1px dashed var(--text-muted); border-radius: 6px; padding: 10px; margin-bottom: 15px; text-align: center;">
+                    <p style="margin: 0; font-size: 12px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        <span id="marker-icon"></span><span id="marker-instruction">🟢 Aguardando: Selecione o texto de Início.</span>
                     </p>
                     <button id="btn-cancel-marker" class="btn-secondary" style="display: none; width: 100%; margin-top: 8px; padding: 4px; font-size: 11px; color: #dc2626; border-color: #dc2626;">Cancelar</button>
                 </div>
@@ -87,9 +94,43 @@
     </div>
     
     <!-- Tooltip Dinâmico (Preservado) -->
-    <button id="selection-tooltip" class="btn-primary" style="display: none; position: absolute; z-index: 1000; padding: 8px 16px; font-size: 13px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-radius: 20px; cursor: pointer;">
-        📍 Definir Início
+    <button id="selection-tooltip" class="btn-primary" style="display: none; position: absolute; z-index: 1000; padding: 8px 16px; font-size: 13px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-radius: 20px; cursor: pointer; align-items: center; gap: 6px;">
+        <span id="tooltip-icon"></span><span id="tooltip-text">Definir Início</span>
     </button>
+</div>
+
+<!-- Modal de Nomenclatura -->
+<div id="naming-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <h3 style="margin-top: 0; color: var(--primary-color);">Identificação do Documento</h3>
+        <label class="textarea-label">Tipo de Documento:</label>
+        <select id="doc-type-select" class="custom-select">
+            <option value="Recurso_Ordinario">Recurso Ordinário</option>
+            <option value="Contrarrazoes">Contrarrazões</option>
+            <option value="Agravo_de_Peticao">Agravo de Petição</option>
+            <option value="Agravo_de_Instrumento">Agravo de Instrumento</option>
+            <option value="Embargos_de_Declaracao">Embargos de Declaração</option>
+            <option value="Sentenca">Sentença</option>
+            <option value="Outro">Outro (Digitar manualmente)</option>
+        </select>
+        <div id="party-selection-group" style="margin-top: 15px;">
+            <label class="textarea-label">Parte Relacionada:</label>
+            <select id="doc-party-select" class="custom-select">
+                <option value="Parte_Autora">Parte Autora</option>
+                <option value="Parte_Re">Parte Ré</option>
+                <option value="">Não se aplica</option>
+            </select>
+        </div>
+        <div id="custom-name-group" style="margin-top: 15px; display: none;">
+            <label class="textarea-label">Nome Manual <span style="color:red">*</span></label>
+            <input type="text" id="doc-custom-input" class="custom-input" placeholder="Obrigatório. Ex: Peticao_Inicial">
+            <small id="custom-error" style="color: red; display: none; font-size: 11px;">Por favor, digite um nome.</small>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 25px; justify-content: flex-end;">
+            <button id="btn-cancel-modal" class="btn-secondary">Cancelar</button>
+            <button id="btn-confirm-modal" class="btn-primary">Confirmar</button>
+        </div>
+    </div>
 </div>
 
 </body>
