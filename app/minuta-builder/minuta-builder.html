@@ -13,7 +13,7 @@
     </header>
 
     <nav class="sidebar">
-        <!-- NOVO: Ícone Home no topo da barra -->
+        <!-- Ícone Home no topo da barra -->
         <a href="../../index.html" class="nav-btn btn-home-module" title="Voltar ao Portal">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
         </a>
@@ -32,20 +32,25 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         </button>
         
-        <!-- NOVO: Link Assistente IA (Ícone Playmobil) -->
+        <!-- SVG Playmobil Corrigido (Pescoço contínuo) -->
         <a href="https://ia.jt.jus.br/chat/assistant/6a347ac47a3edb016f0bb442" target="_blank" class="nav-btn assistant-ai-btn" title="Abrir Assistente Redator (Chat.JT)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <!-- Cabelo/Capacete clássico Playmobil -->
                 <path d="M6 8c0-3.5 2.5-6 6-6s6 2.5 6 6v2H6V8z"></path>
-                <!-- Rosto -->
-                <path d="M8 10v2a4 4 0 0 0 8 0v-2"></path>
-                <!-- Corpo/Tronco clássico trapezoidal -->
-                <path d="M7 14l-1.5 8h13L17 14"></path>
-                <!-- Braços rígidos -->
+                <path d="M8 10v3a4 4 0 0 0 8 0v-3"></path>
+                <path d="M7 13l-1.5 9h13l-1.5-9"></path>
                 <path d="M5.5 14c-1 0-1.5 1-1.5 2v4"></path>
                 <path d="M18.5 14c1 0 1.5 1 1.5 2v4"></path>
             </svg>
         </a>
+
+        <!-- NOVO: Gerador de Prompt Externo -->
+        <button class="nav-btn" data-target="panel-ai-prompt" title="Gerador de Prompt Lapidador">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+        </button>
     </nav>
 
     <main>
@@ -86,13 +91,13 @@
             <button class="btn-add" onclick="addBloco()">+ Adicionar Bloco de Diretriz</button>
         </div>
 
-        <!-- NOVO: Veredito em texto simples -->
+        <!-- Painel Veredito Refatorado -->
         <div id="panel-veredito" class="panel">
             <div class="panel-header">
-                <h1 class="panel-title" style="color: #e65100;">Veredito Pretendido</h1>
+                <h1 class="panel-title" style="color: var(--verdict-color);">Veredito Pretendido</h1>
                 <p class="panel-desc">Insira a conclusão e dispositivo para este tópico.</p>
             </div>
-            <div class="editor-container" style="border-left: 4px solid #e65100;">
+            <div class="editor-container" style="border-left: 4px solid var(--verdict-color);">
                 <div id="editor-veredito" class="editor-area" contenteditable="true" oninput="saveState()"></div>
             </div>
         </div>
@@ -103,6 +108,42 @@
             <div class="result-wrapper">
                 <button class="copy-float-btn" onclick="copyContent('output-xml', this)">Copiar Prompt</button>
                 <div id="output-xml" class="result-box"></div>
+            </div>
+        </div>
+
+        <!-- NOVO PAINEL: GERADOR DE PROMPT -->
+        <div id="panel-ai-prompt" class="panel">
+            <div class="panel-header">
+                <h1 class="panel-title" style="color: #8b5cf6;">Gerador de Prompt Lapidador</h1>
+                <p class="panel-desc">Formulário inteligente para montar o comando de execução para IA externa.</p>
+            </div>
+            
+            <div class="editor-container" style="padding: 20px; display: flex; flex-direction: column; gap: 16px; background: #f8fafc;">
+                <div>
+                    <label class="prompt-label">Cole o texto já redigido aqui ou deixe vazio</label>
+                    <textarea id="prompt-in-minuta" class="prompt-textarea" placeholder="Digite aqui..."></textarea>
+                </div>
+                <div>
+                    <label class="prompt-label">NOME DO TÓPICO EM ANÁLISE</label>
+                    <input type="text" id="prompt-in-topico" class="prompt-input" readonly style="background: #e2e8f0; cursor: not-allowed;" title="Puxado automaticamente">
+                </div>
+                <div>
+                    <label class="prompt-label">Matriz Dialética / Mapeamento Probatório</label>
+                    <textarea id="prompt-in-diretrizes" class="prompt-textarea" readonly style="background: #e2e8f0; cursor: not-allowed;" title="Puxado automaticamente do seu progresso" placeholder="Os dados serão injetados aqui automaticamente..."></textarea>
+                </div>
+                <div>
+                    <label class="prompt-label">Cole aqui o texto gerado pelo Chat.JT / Modelo Flash</label>
+                    <textarea id="prompt-in-rascunho" class="prompt-textarea" placeholder="Digite aqui..."></textarea>
+                </div>
+                <button class="btn-primary" style="align-self: flex-start; margin-top: 10px; background: #8b5cf6;" onclick="gerarPromptFinal()">Construir Prompt Perfeito</button>
+            </div>
+
+            <div class="result-wrapper" id="prompt-result-wrapper" style="display: none; margin-top: 20px;">
+                <button class="copy-float-btn" onclick="copyContent('output-prompt-final', this)" style="background: #8b5cf6; border-color: #7c3aed;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> 
+                    Copiar Código
+                </button>
+                <div id="output-prompt-final" class="result-box" style="border-top: 4px solid #8b5cf6;"></div>
             </div>
         </div>
     </main>

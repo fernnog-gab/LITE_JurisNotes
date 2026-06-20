@@ -13,6 +13,7 @@
     --sidebar-width: 68px;
     --header-height: 60px;
     --accent-green: #A3E635;      /* Igual ao primary para manter padrão */
+    --verdict-color: #e65100;     /* NOVO: Cor semântica do Veredito */
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -59,6 +60,7 @@ header {
 }
 .btn-home-module:hover, .assistant-ai-btn:hover {
     background-color: rgba(163, 230, 53, 0.1);
+    color: var(--primary-color) !important; /* CORREÇÃO: Garante que o ícone não fique branco e suma */
 }
 
 main { padding: 40px; overflow-y: auto; display: flex; justify-content: center; }
@@ -214,3 +216,29 @@ main { padding: 40px; overflow-y: auto; display: flex; justify-content: center; 
     font-weight: bold;
 }
 .btn-delete-block:hover { background: #fca5a5; color: white;}
+
+/* =========================================
+   ESTILOS DO GERADOR DE PROMPT (NOVO)
+   ========================================= */
+.prompt-label {
+    display: block; font-size: 13px; font-weight: 700;
+    color: var(--trt-blue); margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.prompt-textarea, .prompt-input {
+    width: 100%; border: 1px solid var(--border-color);
+    border-radius: 6px; padding: 12px; font-family: inherit;
+    font-size: 14px; color: var(--text-main); background: white;
+    transition: border-color 0.2s; resize: vertical;
+}
+.prompt-input { height: 45px; }
+.prompt-textarea { min-height: 80px; }
+.prompt-textarea:focus, .prompt-input:focus {
+    outline: none; border-color: #8b5cf6;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+.btn-primary {
+    color: white; border: none; padding: 10px 20px; border-radius: 6px; 
+    cursor: pointer; font-weight: 600; transition: 0.2s;
+}
+.btn-primary:hover { opacity: 0.9; }

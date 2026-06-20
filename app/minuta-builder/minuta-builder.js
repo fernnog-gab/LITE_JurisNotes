@@ -39,12 +39,23 @@ function loadState() {
     renderList();
 }
 
+// --- NAVEGAÇÃO SEGURA ---
 document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+        // CORREÇÃO CRÍTICA: Ignora tags <a> que não gerenciam abas internas
+        if (!btn.dataset.target) return; 
+
         document.querySelectorAll('.nav-btn, .panel').forEach(el => el.classList.remove('active'));
         btn.classList.add('active');
         document.getElementById(btn.dataset.target).classList.add('active');
-        if(btn.dataset.target === 'panel-resultado-dados') generateXMLData(); // Dispara geração
+        
+        if (btn.dataset.target === 'panel-resultado-dados') generateXMLData();
+        
+        // NOVO ALINHAMENTO ARQUITETURAL: Auto-preenchimento Inteligente do Prompt
+        if (btn.dataset.target === 'panel-ai-prompt') {
+            document.getElementById('prompt-in-topico').value = state.topicName || "Tópico não informado";
+            document.getElementById('prompt-in-diretrizes').value = sanitizeToMarkdown(buildExportPayload());
+        }
     });
 });
 
@@ -116,16 +127,6 @@ function renderList() {
         div.addEventListener('dragstart', () => div.classList.add('dragging'));
         div.addEventListener('dragend', () => { div.classList.remove('dragging'); reorderList(); });
         container.appendChild(div);
-    });
-
-    container.addEventListener('dragover', e => {
-        e.preventDefault(); 
-        const after = getDragAfterElement(container, e.clientY);
-        const dragging = document.querySelector('.dragging');
-        if (dragging) { 
-            if (after == null) container.appendChild(dragging); 
-            else container.insertBefore(dragging, after);
-        }
     });
 }
 
@@ -223,6 +224,103 @@ function copyContent(id, btn) {
     });
 }
 
-// Inicializadores
+// --- MOTOR GERADOR DE PROMPT PARA IA EXTERNA ---
+function gerarPromptFinal() {
+    const txtMinuta = document.getElementById('prompt-in-minuta').value.trim() || "";
+    const txtTopico = document.getElementById('prompt-in-topico').value.trim() || "Tópico não informado";
+    const txtDiretrizes = document.getElementById('prompt-in-diretrizes').value.trim();
+    const txtRascunho = document.getElementById('prompt-in-rascunho').value.trim();
+
+    if (!txtRascunho) {
+        alert("O rascunho do Chat.JT é obrigatório para realizar a lapidação.");
+        return;
+    }
+
+    const promptMaster = `# PERSONA E OBJETIVO CORE
+Você é o Revisor Sênior de Acórdãos e Especialista em Lógica Deôntica (TRT-23/TST). Sua função exclusiva atuar como um "Lapidador Textual", recebendo um rascunho gerado por uma IA de menor capacidade e transformando-o em uma minuta de voto escorreita, com altíssimo rigor técnico, aplicação de Legal Design e argumentação silogística perfeita.
+
+# O FLUXO DE TRABALHO
+Abaixo, fornecerei dois blocos de informação que você deve processar imediatamente:
+1. [DIRETRIZES JURIS NOTES]: As regras do jogo. A estrutura esperada, a base legal, a jurisprudência aplicável e o destino final.
+2. [RASCUNHO BASE]: O texto preliminar gerado.
+
+# RESTRIÇÃO FUNDAMENTAL (NEGATIVE PROMPT)
+Você ESTÁ ESTRITAMENTE PROIBIDO de alterar a verdade dos fatos, inventar novas provas processuais ou modificar a conclusão de mérito (decisão do magistrado). Seu trabalho é 100% focado na FORMA, ESTRUTURA, LÓGICA SILOGÍSTICA e ADEQUAÇÃO ÀS DIRETRIZES.
+
+# REGRAS DE REDAÇÃO E AUDITORIA LÓGICA (ORDEM DE PRIORIDADE)
+1. **Adequação e Revisão Rigorosa:** Conferência atenta com as diretrizes [DIRETRIZES JURIS NOTES] e correção gramatical.
+2. **Padronização Terminológica:** Substitua "reclamante" e "reclamada" por "parte autora" e "parte ré".
+3. **Conversão de Tempo de Gravação:** Converta para o formato: "(MM' SS'' a MM' SS'' da gravação da audiência)".
+4. **Reordenação Estrutural:** O início da minuta deve abordar os fundamentos da origem antes das razões recursais.
+5. **Síntese Argumentativa:** Proibido reiterar expressões de postulação ("requer a reforma"). Sintetize uma vez no intróito.
+6. **Desfragmentação e Linearidade:** Proibido utilizar subtópicos intermediários para fatiar teses da mesma natureza.
+7. **Microcoesão e Macrocoerência:** Elimine frases ilhadas e conectivos genéricos.
+8. **Legal Design Tático:** Mantenha os parágrafos curtos e objetivos.
+
+# REGRAS RÍGIDAS DE FORMATAÇÃO DE SAÍDA (SISTEMA DE TAGS)
+- Toda palavra ou trecho reescrito/adicionado deve estar entre chaves e em negrito (ex: **{texto}**).
+- **EXCEÇÃO:** Padronizações ("parte autora", "parte ré", tempo de audiência) NÃO recebem chaves/negrito.
+
+# FORMATO DE SAÍDA OBRIGATÓRIO
+## 1. Auditoria de Conformidade (Juris Notes)
+[Análise curta sobre o rascunho base vs diretrizes]
+
+## 2. Minuta de Voto Lapidada
+[Texto final com marcação **{texto}** aplicada]
+
+## 3. Engenharia da Refatoração
+* **Pontes Lógicas Criadas:** [Explicação]
+* **Fio Condutor:** [Explicação]
+
+---
+### DADOS DE ENTRADA E GATILHO DE EXECUÇÃO
+
+📜 1. CONTEXTO: 
+MINUTA REDIGIDA ATÉ O MOMENTO 
+== MINUTA_ATUAL ==
+>|${txtMinuta}|< 
+== FIM_MINUTA ==
+
+🎯 2. TÓPICO RECURSAL EM ANÁLISE 
+<topico_atual>
+>|${txtTopico}|<
+</topico_atual> 
+
+🛑 3. PROTOCOLO DE ALINHAMENTO E CONTRADIÇÕES (CIRCUIT BREAKER)
+[Avalie o Pacote de Dados e as premissas. Se houver choque lógico (comandos vs provimento), NÃO REESCREVA O TEXTO. Interrompa e formule perguntas de alinhamento para o usuário.]
+
+📎 4. ACERVO DOCUMENTAL E PROBATÓRIO (ANEXOS)
+[Utilize arquivos ativamente para ancoragem fática]
+
+📦 5. PACOTE DE DADOS ESTRUTURADO VIA JURIS NOTES
+== DIRETRIZES ==
+>|${txtDiretrizes}|<
+== FIM_DIRETRIZES ==
+
+**[RASCUNHO BASE]**
+>|${txtRascunho}|<
+
+**AÇÃO:** Processe os dados de entrada e gere a saída rigorosamente conforme o FORMATO DE SAÍDA OBRIGATÓRIO.`;
+
+    const outputEl = document.getElementById('output-prompt-final');
+    outputEl.textContent = promptMaster;
+    outputEl.setAttribute('data-raw', promptMaster);
+    document.getElementById('prompt-result-wrapper').style.display = 'block';
+}
+
+// --- INICIALIZADORES E EVENTOS GERAIS (Final do Arquivo) ---
+
+// HOISTING DA LÓGICA DE DRAGOVER: Executa apenas 1x na vida da aplicação (Corrige Memory Leak)
+const dragContainer = document.getElementById('list-diretrizes');
+dragContainer.addEventListener('dragover', e => {
+    e.preventDefault(); 
+    const after = getDragAfterElement(dragContainer, e.clientY);
+    const dragging = document.querySelector('.dragging');
+    if (dragging) { 
+        if (after == null) dragContainer.appendChild(dragging); 
+        else dragContainer.insertBefore(dragging, after);
+    }
+});
+
 document.getElementById('input-topic-name').addEventListener('input', saveState);
 window.onload = loadState;
