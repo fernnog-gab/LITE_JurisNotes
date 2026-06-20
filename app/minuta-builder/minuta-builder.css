@@ -2,16 +2,17 @@
    CSS GLOBAL E ESTRUTURAL (PRESERVADO)
    ========================================= */
 :root {
-    --primary-color: #1a56db;
-    --primary-hover: #1e40af;
+    --primary-color: #A3E635;     /* Verde-Limão Minuta */
+    --primary-hover: #84cc16;
     --bg-color: #f3f4f6;
     --surface-color: #ffffff;
     --border-color: #d1d5db;
     --text-main: #111827;
     --text-muted: #4b5563;
+    --trt-blue: #1a3a5c;          /* Azul institucional */
     --sidebar-width: 68px;
     --header-height: 60px;
-    --accent-green: #059669;
+    --accent-green: #A3E635;      /* Igual ao primary para manter padrão */
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -28,8 +29,8 @@ body {
 }
 
 header {
-    grid-column: 2; background: var(--surface-color);
-    border-bottom: 1px solid var(--border-color);
+    grid-column: 2; background-color: var(--trt-blue);
+    border-bottom: 1px solid rgba(255,255,255,0.1); color: white;
     display: flex; align-items: center; padding: 0 32px; justify-content: space-between;
 }
 .topic-display { font-weight: 700; font-size: 1.1rem; color: var(--primary-color); text-transform: uppercase; }
@@ -50,7 +51,15 @@ header {
     background: var(--primary-color); border-radius: 0 4px 4px 0;
 }
 .divider { width: 32px; height: 1px; background-color: #334155; margin: 4px 0; }
-.generate-data-btn { color: #3b82f6; }
+.generate-data-btn { color: var(--primary-color); }
+
+/* Botão Casa e Botão Assistente IA na Sidebar */
+.btn-home-module, .assistant-ai-btn {
+    color: var(--primary-color);
+}
+.btn-home-module:hover, .assistant-ai-btn:hover {
+    background-color: rgba(163, 230, 53, 0.1);
+}
 
 main { padding: 40px; overflow-y: auto; display: flex; justify-content: center; }
 .panel { display: none; width: 100%; max-width: 900px; animation: fadeIn 0.3s ease; }
@@ -64,7 +73,7 @@ main { padding: 40px; overflow-y: auto; display: flex; justify-content: center; 
 .editor-area { min-height: 150px; padding: 20px; outline: none; line-height: 1.6; }
 
 .draggable-list { display: flex; flex-direction: column; gap: 12px; }
-.btn-add { background: var(--primary-color); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 10px; transition: 0.2s;}
+.btn-add { background: var(--primary-color); color: #111827; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 10px; transition: 0.2s;}
 .btn-add:hover { background: var(--primary-hover); }
 
 .result-wrapper { position: relative; background: #1e293b; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); overflow: hidden; }
@@ -72,7 +81,7 @@ main { padding: 40px; overflow-y: auto; display: flex; justify-content: center; 
 .xml-tag { color: #38bdf8; font-weight: bold; }
 
 .copy-float-btn { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(4px); }
-.copy-toast { position: fixed; bottom: 20px; right: 20px; background: var(--accent-green); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; display: none; z-index: 1000; }
+.copy-toast { position: fixed; bottom: 20px; right: 20px; background: var(--accent-green); color: #111827; padding: 12px 24px; border-radius: 8px; font-weight: 600; display: none; z-index: 1000; }
 
 /* =========================================
    LÓGICAS CRÍTICAS DE UI (ATUALIZAÇÃO V4.1)
@@ -118,7 +127,7 @@ main { padding: 40px; overflow-y: auto; display: flex; justify-content: center; 
     width: 28px;
     height: 28px;
     background-color: var(--primary-color);
-    color: white;
+    color: #111827;
     border-radius: 50%;
     display: flex;
     justify-content: center;
