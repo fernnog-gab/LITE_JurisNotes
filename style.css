@@ -456,7 +456,7 @@ svg { flex-shrink: 0; }
    ========================================================================== */
 .modal-file-row {
     display: grid;
-    grid-template-columns: 2.2fr 1.8fr 1.5fr;
+    grid-template-columns: 3fr 1.5fr 1.5fr;
     gap: 12px;
     align-items: center;
     background: #f8fafc;
@@ -471,12 +471,21 @@ svg { flex-shrink: 0; }
 }
 
 .modal-file-label {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--text-main);
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+/* Nova regra: Estilização da barra de rolagem específica para o nome do arquivo */
+.modal-file-label::-webkit-scrollbar {
+    height: 4px;
+}
+.modal-file-label::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 4px;
 }
 
 /* Responsividade para telas estreitas ou tablets verticais */
