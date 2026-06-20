@@ -8,13 +8,13 @@
 }
 
 :root {
-    --bg-color: #F9F9F6;
-    --surface-color: #FFFFFF;
-    --text-main: #1F2937;
-    --text-muted: #6B7280;
-    --border-color: #E5E7EB;
-    --primary-color: #004D40;
-    --primary-hover: #00332A;
+    --bg-color: #f3f4f6;
+    --surface-color: #ffffff;
+    --text-main: #111827;
+    --text-muted: #4b5563;
+    --border-color: #d1d5db;
+    --primary-color: #1a56db;
+    --primary-hover: #1e40af;
     --radius: 8px;
 }
 

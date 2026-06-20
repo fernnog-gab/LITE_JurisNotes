@@ -1,0 +1,93 @@
+/* Paleta Global Extraída da Ferramenta de Minutas */
+:root {
+    --primary-color: #1a56db;     
+    --primary-hover: #1e40af;     
+    --bg-color: #f3f4f6;          
+    --surface-color: #ffffff;     
+    --border-color: #d1d5db;      
+    --text-main: #111827;         
+    --text-muted: #4b5563;        
+    --radius: 8px;
+}
+
+/* Estilos Específicos da Página Inicial */
+.home-body {
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.home-container {
+    max-width: 1000px;
+    width: 90%;
+    text-align: center;
+}
+
+.home-header h1 {
+    font-size: 2.5rem;
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.home-header p {
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    margin-bottom: 3rem;
+}
+
+/* O EFEITO 3D / FOCO DE OPACIDADE */
+.cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+    perspective: 1000px; 
+}
+
+.tool-card {
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 40px 30px;
+    text-decoration: none;
+    color: var(--text-main);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.card-icon {
+    width: 64px;
+    height: 64px;
+    background: #eff6ff; 
+    color: var(--primary-color);
+    border-radius: 16px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.card-icon svg { 
+    width: 32px; 
+    height: 32px; 
+}
+
+/* LÓGICA DO HOVER */
+.cards-container:hover .tool-card {
+    opacity: 0.4;
+    transform: scale(0.98);
+}
+
+.cards-container .tool-card:hover {
+    opacity: 1;
+    transform: translateY(-10px) scale(1.02);
+    border-color: var(--primary-color);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}

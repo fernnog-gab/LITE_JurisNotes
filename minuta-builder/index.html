@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mestre de Gabinete V4.0 - Fundamentos e Diretrizes Modulares</title>
+    <style>
+        /* =========================================
+           ARQUITETURA CSS: Identidade Institucional
+           ========================================= */
+        :root {
+            --primary-color: #1a56db;
+            --primary-hover: #1e40af;
+            --bg-color: #f3f4f6;
+            --surface-color: #ffffff;
+            --border-color: #d1d5db;
+            --text-main: #111827;
+            --text-muted: #4b5563;
+            --sidebar-width: 68px;
+            --header-height: 60px;
+            --accent-green: #059669;
+            --accent-purple: #7c3aed;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: grid;
+            grid-template-columns: var(--sidebar-width) 1fr;
+            grid-template-rows: var(--header-height) 1fr;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            grid-column: 2; background: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            display: flex; align-items: center; padding: 0 32px; justify-content: space-between;
+        }
+        .topic-display { font-weight: 700; font-size: 1.1rem; color: var(--primary-color); text-transform: uppercase; }
+        .status-pill { font-size: 11px; background: #ecfdf5; color: #065f46; padding: 4px 12px; border-radius: 12px; font-weight: 600; }
+
+        .sidebar {
+            grid-row: 1 / 3; background-color: #1e293b;
+            display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 16px; z-index: 100;
+        }
+        .nav-btn {
+            background: none; border: none; cursor: pointer; width: 44px; height: 44px;
+            border-radius: 10px; display: flex; justify-content: center; align-items: center;
+            color: #94a3b8; transition: all 0.2s; position: relative;
+        }
+        .nav-btn:hover, .nav-btn.active { background-color: #334155; color: #f8fafc; }
+        .nav-btn.active::after {
+            content: ''; position: absolute; left: -12px; width: 4px; height: 20px;
+            background: var(--primary-color); border-radius: 0 4px 4px 0;
+        }
+        .divider { width: 32px; height: 1px; background-color: #334155; margin: 4px 0; }
+        .generate-data-btn { color: #3b82f6; }
+        .generate-master-btn { color: #a855f7; }
+
+        main { padding: 40px; overflow-y: auto; display: flex; justify-content: center; }
+        .panel { display: none; width: 100%; max-width: 900px; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .panel.active { display: block; }
+        .panel-header { margin-bottom: 24px; }
+        .panel-title { font-size: 22px; font-weight: 700; }
+        .panel-desc { font-size: 14px; color: var(--text-muted); margin-top: 4px; line-height: 1.5;}
+
+        .editor-container { background: white; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .toolbar { background: #f8fafc; padding: 8px; border-bottom: 1px solid var(--border-color); display: flex; gap: 5px; }
+        .format-btn { padding: 4px 10px; background: white; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-family: serif; font-weight: bold; }
+        .editor-area { min-height: 150px; padding: 20px; outline: none; line-height: 1.6; }
+
+        .attachment-toggle {
+            display: flex; align-items: center; gap: 12px; margin-top: 24px; padding: 16px;
+            background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;
+        }
+        .attachment-toggle input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .attachment-info { font-size: 14px; color: #1e40af; font-weight: 500; }
+
+        /* --- DRAG AND DROP MODULAR --- */
+        .draggable-list { display: flex; flex-direction: column; gap: 12px; }
+        .drag-item { background: white; border: 1px solid var(--border-color); border-radius: 8px; cursor: default; position: relative; }
+        .drag-item.dragging { opacity: 0.5; border: 2px dashed var(--primary-color); }
+        .drag-handle { background: #f8fafc; padding: 8px; display: flex; align-items: center; justify-content: center; cursor: grab; border-bottom: 1px solid var(--border-color); border-radius: 8px 8px 0 0; font-size: 13px; color: var(--text-muted); font-weight: 500; }
+        .drag-content { padding: 15px; }
+        .btn-add { background: var(--primary-color); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 10px; transition: 0.2s;}
+        .btn-add:hover { background: var(--primary-hover); }
+        .btn-delete { position: absolute; top: 8px; right: 8px; background: #fee2e2; color: #ef4444; border: none; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; }
+
+        .result-wrapper { position: relative; background: #1e293b; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); overflow: hidden; }
+        .result-box { color: #e2e8f0; padding: 50px 30px 30px 30px; font-family: 'Consolas', monospace; font-size: 14px; white-space: pre-wrap; line-height: 1.5; max-height: 65vh; overflow-y: auto; }
+        .xml-tag { color: #38bdf8; font-weight: bold; }
+        .sys-heading { color: #a78bfa; font-weight: bold; }
+
+        .copy-float-btn { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(4px); }
+        .copy-float-btn.success { background: var(--accent-green); border-color: var(--accent-green); }
+        .copy-toast { position: fixed; bottom: 20px; right: 20px; background: var(--accent-green); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; display: none; z-index: 1000; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div id="display-topic-name" class="topic-display">Novo Tópico Recursal</div>
+        <div class="status-pill">✓ Salvo localmente</div>
+    </header>
+
+    <nav class="sidebar">
+        <button class="nav-btn active" data-target="panel-config" title="Identificação do Tópico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+        <button class="nav-btn" data-target="panel-alegacoes" title="Alegações Recursais"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></button>
+        <button class="nav-btn" data-target="panel-fundamentos" title="Fundamentos da Origem"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button>
+        <button class="nav-btn" data-target="panel-diretrizes" title="Diretrizes da Fundamentação"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></button>
+        
+        <div class="divider"></div>
+
+        <button class="nav-btn generate-data-btn" data-target="panel-resultado-dados" title="Gerar Apenas XML"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg></button>
+        <button class="nav-btn generate-master-btn" data-target="panel-resultado-master" title="Gerar Master Prompt"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></button>
+    </nav>
+
+    <main>
+        <!-- PAINEL 1 -->
+        <div id="panel-config" class="panel active">
+            <div class="panel-header"><h1 class="panel-title">Identificação do Tópico e Autos</h1></div>
+            <div class="editor-container" style="padding: 30px;">
+                <label style="display: block; margin-bottom: 10px; font-weight: 600;">Nome do Tópico Recursal:</label>
+                <input type="text" id="input-topic-name" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 18px;" placeholder="Ex: DO ADICIONAL DE PERICULOSIDADE">
+                
+                <div class="attachment-toggle">
+                    <input type="checkbox" id="check-anexos" onchange="saveState()">
+                    <label for="check-anexos" class="attachment-info">
+                        <strong>Lerei os autos a partir de anexos PDF/TXT inseridos no chat da IA.</strong><br>
+                        <span style="font-size: 12px; color: #3b82f6;">Se marcado, a IA será instruída a cruzar suas diretrizes com os arquivos que você anexar externamente.</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAINEL 2 -->
+        <div id="panel-alegacoes" class="panel">
+            <div class="panel-header"><h1 class="panel-title">Alegações Recursais</h1></div>
+            <div class="editor-container">
+                <div class="toolbar"><button class="format-btn" onclick="execCmd('bold', 'editor-alegacoes')">B</button><button class="format-btn" onclick="execCmd('italic', 'editor-alegacoes')">I</button><button class="format-btn" onclick="execCmd('underline', 'editor-alegacoes')">U</button></div>
+                <div id="editor-alegacoes" class="editor-area" contenteditable="true"></div>
+            </div>
+        </div>
+
+        <!-- PAINEL 3 (MODULAR) -->
+        <div id="panel-fundamentos" class="panel">
+            <div class="panel-header">
+                <h1 class="panel-title">Fundamentos da Origem</h1>
+                <p class="panel-desc">Adicione os principais fatos da sentença. Arraste os blocos para reordenar a prioridade de leitura.</p>
+            </div>
+            <div id="list-fundamentos" class="draggable-list"></div>
+            <button class="btn-add" onclick="addBloco('fundamentos')">+ Novo Bloco de Fundamento</button>
+        </div>
+
+        <!-- PAINEL 4 (AGORA MODULAR TAMBÉM) -->
+        <div id="panel-diretrizes" class="panel">
+            <div class="panel-header">
+                <h1 class="panel-title">Diretrizes da Fundamentação</h1>
+                <p class="panel-desc">Construa a tese do seu voto. Use blocos separados para definir premissas, afastar preliminares e aplicar súmulas.</p>
+            </div>
+            <div id="list-diretrizes" class="draggable-list"></div>
+            <button class="btn-add" onclick="addBloco('diretrizes')">+ Novo Bloco de Diretriz</button>
+        </div>
+
+        <!-- RESULTADO 1 -->
+        <div id="panel-resultado-dados" class="panel">
+            <div class="panel-header"><h1 class="panel-title">Apenas Dados Processuais (XML)</h1></div>
+            <div class="result-wrapper">
+                <button class="copy-float-btn" onclick="copyContent('output-xml', this)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copiar XML</button>
+                <div id="output-xml" class="result-box"></div>
+            </div>
+        </div>
+
+        <!-- RESULTADO 2 -->
+        <div id="panel-resultado-master" class="panel">
+            <div class="panel-header"><h1 class="panel-title" style="color: var(--accent-purple);">Master Prompt (Completo)</h1></div>
+            <div class="result-wrapper">
+                <button class="copy-float-btn" style="background: var(--accent-purple); border-color: var(--accent-purple);" onclick="copyContent('output-master', this)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copiar Prompt Completo</button>
+                <div id="output-master" class="result-box"></div>
+            </div>
+        </div>
+    </main>
+
+    <div id="toast" class="copy-toast">Copiado para a área de transferência!</div>
+
+    <script>
+        // --- CONSTANTE: INSTRUÇÃO DE SISTEMA CORRIGIDA ---
+        const SYSTEM_PROMPT = `# PERSONA E CONTEXTO DE SISTEMA
+Você é o "Mestre de Gabinete", um Assessor Jurídico Sênior (TRT/TST). Sua função é elaborar a minuta de voto do acórdão e uma Mentoria desconstruindo a tese.
+
+# DIRETRIZES DE ESTILO E REDAÇÃO
+1. Redija em português jurídico formal e escorreito.
+2. Seja denso, direto ao ponto (ratio decidendi) e evite repetições.
+3. Fundamente baseando-se na CLT, Súmulas/OJs do TST e jurisprudência pacificada.
+
+# INTEGRAÇÃO DE ARQUIVOS ANEXOS (PDF/TXT)
+Se a tag <documentos_anexos> sinalizar que há arquivos enviados no chat, use esses documentos como base factual complementar (para extrair valores, citações de depoimentos ou partes da sentença). Contudo, a sua conclusão jurídica deve SEMPRE se submeter à tese ordenada em <diretrizes_da_fundamentacao>.
+
+# ESTRUTURA DE DADOS (TAGS XML)
+- <topico_recursal>: O nome do tópico em análise.
+- <documentos_anexos>: Indica se você deve buscar informações nos arquivos em anexo.
+- <alegacoes_recursais>: Argumentos da recorrente.
+- <fundamentos_da_origem>: O que a sentença decidiu (use como âncora para procurar no anexo, se houver).
+- <diretrizes_da_fundamentacao>: Passo a passo da tese jurídica que deve ser aplicada e o veredito final.
+
+# FORMATO DE SAÍDA EXIGIDO
+## 🏛️ MINUTA DE VOTO
+**[Texto de <topico_recursal>]**
+(Redija o acórdão de forma fluida. Integre o relato da origem e o inconformismo processual de forma orgânica. Conclua explicitamente com a tese e o veredito ordenados nas diretrizes).
+
+---
+## 🧠 MENTORIA DE GABINETE
+* **A Estratégia:** Por que a minuta foi estruturada assim.
+* **Ratio Decidendi:** Fato ou norma que definiu o resultado.
+
+Abaixo estão os dados processuais estruturados.`;
+
+        // --- ESTADO (STATE) V4.0 ---
+        let state = {
+            topicName: "",
+            temAnexos: false,
+            alegacoes: "",
+            fundamentos: [{ id: Date.now(), content: "" }],
+            diretrizes: [{ id: Date.now() + 1, content: "" }] // Agora é um array modular!
+        };
+
+        // --- PERSISTÊNCIA ---
+        function saveState() {
+            state.topicName = document.getElementById('input-topic-name').value;
+            state.temAnexos = document.getElementById('check-anexos').checked;
+            state.alegacoes = document.getElementById('editor-alegacoes').innerHTML;
+            localStorage.setItem('mestre_gabinete_v4', JSON.stringify(state));
+            updateHeader();
+        }
+
+        function loadState() {
+            const saved = localStorage.getItem('mestre_gabinete_v4');
+            if (saved) {
+                state = JSON.parse(saved);
+                document.getElementById('input-topic-name').value = state.topicName || "";
+                document.getElementById('check-anexos').checked = state.temAnexos || false;
+                document.getElementById('editor-alegacoes').innerHTML = state.alegacoes || "";
+                
+                if(!state.fundamentos || state.fundamentos.length === 0) state.fundamentos = [{ id: Date.now(), content: "" }];
+                if(!state.diretrizes || state.diretrizes.length === 0) state.diretrizes = [{ id: Date.now() + 1, content: "" }];
+                
+                renderList('fundamentos', 'list-fundamentos');
+                renderList('diretrizes', 'list-diretrizes');
+                updateHeader();
+            } else {
+                renderList('fundamentos', 'list-fundamentos');
+                renderList('diretrizes', 'list-diretrizes');
+            }
+        }
+
+        function updateHeader() {
+            document.getElementById('display-topic-name').innerText = state.topicName.trim() === "" ? "Novo Tópico Recursal" : state.topicName;
+        }
+
+        function execCmd(cmd, editorId) { document.execCommand(cmd, false, null); saveState(); }
+
+        // --- NAVEGAÇÃO ---
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.nav-btn, .panel').forEach(el => el.classList.remove('active'));
+                btn.classList.add('active');
+                const targetPanel = btn.dataset.target;
+                document.getElementById(targetPanel).classList.add('active');
+                if(targetPanel === 'panel-resultado-dados') generateXMLData();
+                if(targetPanel === 'panel-resultado-master') generateMasterPrompt();
+            });
+        });
+
+        // --- SISTEMA GENÉRICO DE DRAG & DROP PARA MÚLTIPLAS LISTAS ---
+        function addBloco(tipo) { 
+            state[tipo].push({ id: Date.now(), content: "" }); 
+            renderList(tipo, `list-${tipo}`); 
+            saveState(); 
+        }
+        
+        function deleteBloco(tipo, id) { 
+            state[tipo] = state[tipo].filter(item => item.id !== id); 
+            renderList(tipo, `list-${tipo}`); 
+            saveState(); 
+        }
+
+        function updateBloco(tipo, id, content) { 
+            const item = state[tipo].find(i => i.id === id);
+            if(item) item.content = content; 
+            saveState(); 
+        }
+
+        function renderList(tipo, containerId) {
+            const container = document.getElementById(containerId); 
+            container.innerHTML = "";
+            const prefixLabel = tipo === 'fundamentos' ? 'Fundamento' : 'Diretriz';
+
+            state[tipo].forEach((item, index) => {
+                const div = document.createElement('div'); 
+                div.className = "drag-item"; div.draggable = true; div.dataset.id = item.id; div.dataset.tipo = tipo;
+                
+                // Adicionamos a Toolbar dentro de cada bloco modular
+                div.innerHTML = `
+                    <div class="drag-handle">⠿ Arraste para reordenar (Bloco de ${prefixLabel} #${index + 1})</div>
+                    <button class="btn-delete" onclick="deleteBloco('${tipo}', ${item.id})" title="Excluir Bloco">✕</button>
+                    <div class="toolbar" style="border-top: none; border-radius: 0;">
+                        <button class="format-btn" onclick="document.execCommand('bold', false, null)">B</button>
+                        <button class="format-btn" onclick="document.execCommand('italic', false, null)">I</button>
+                        <button class="format-btn" onclick="document.execCommand('underline', false, null)">U</button>
+                    </div>
+                    <div class="drag-content">
+                        <div class="editor-area" contenteditable="true" oninput="updateBloco('${tipo}', ${item.id}, this.innerHTML)">${item.content}</div>
+                    </div>`;
+                
+                div.addEventListener('dragstart', () => div.classList.add('dragging'));
+                div.addEventListener('dragend', () => { div.classList.remove('dragging'); reorderList(tipo, containerId); });
+                container.appendChild(div);
+            });
+
+            container.addEventListener('dragover', e => {
+                e.preventDefault(); 
+                const after = getDragAfterElement(container, e.clientY);
+                const dragging = document.querySelector('.dragging');
+                if (dragging && dragging.dataset.tipo === tipo) { // Impede misturar fundamentos com diretrizes
+                    if (after == null) container.appendChild(dragging); 
+                    else container.insertBefore(dragging, after);
+                }
+            });
+        }
+
+        function reorderList(tipo, containerId) {
+            const newOrder = []; 
+            document.querySelectorAll(`#${containerId} .drag-item`).forEach(el => {
+                const found = state[tipo].find(item => item.id === parseInt(el.dataset.id));
+                if(found) newOrder.push(found);
+            });
+            state[tipo] = newOrder; 
+            saveState();
+        }
+
+        function getDragAfterElement(container, y) {
+            const draggable = [...container.querySelectorAll('.drag-item:not(.dragging)')];
+            return draggable.reduce((closest, child) => {
+                const box = child.getBoundingClientRect(); const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+                else return closest;
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        // --- COMPILADOR DE TEXTO E XML ---
+        function htmlToText(html) {
+            if(!html) return "";
+            let text = html.replace(/<div>/gi, '\n').replace(/<\/div>/gi, '').replace(/<br\s*[\/]?>/gi, '\n')
+                           .replace(/<(b|strong)>(.*?)<\/(b|strong)>/gi, '**$2**').replace(/<(i|em)>(.*?)<\/(i|em)>/gi, '*$2*').replace(/<u>(.*?)<\/u>/gi, '_$1_');
+            const tmp = document.createElement("DIV"); tmp.innerHTML = text;
+            return (tmp.textContent || tmp.innerText || "").trim();
+        }
+
+        function buildXMLString() {
+            let xml = `<dados_processuais>\n`;
+            xml += `  <topico_recursal>${state.topicName || "Tópico não informado"}</topico_recursal>\n`;
+            
+            if (state.temAnexos) {
+                xml += `  <documentos_anexos>SIM. O usuário anexou os autos. Leia-os para preencher lacunas factuais, mas obedeça à tese e ao veredito da tag <diretrizes_da_fundamentacao>.</documentos_anexos>\n\n`;
+            } else {
+                xml += `  <documentos_anexos>NÃO. Baseie-se exclusivamente nos textos informados abaixo.</documentos_anexos>\n\n`;
+            }
+            
+            xml += `  <alegacoes_recursais>\n    ${htmlToText(state.alegacoes).replace(/\n/g, '\n    ')}\n  </alegacoes_recursais>\n\n`;
+            
+            xml += `  <fundamentos_da_origem>\n`;
+            state.fundamentos.forEach((f, i) => {
+                const txt = htmlToText(f.content).replace(/\n/g, '\n      ');
+                if(txt) xml += `    <bloco_fundamento id="${i+1}">\n      ${txt}\n    </bloco_fundamento>\n`;
+            });
+            xml += `  </fundamentos_da_origem>\n\n`;
+
+            // Agora as Diretrizes também são geradas de forma modular!
+            xml += `  <diretrizes_da_fundamentacao>\n`;
+            state.diretrizes.forEach((d, i) => {
+                const txt = htmlToText(d.content).replace(/\n/g, '\n      ');
+                if(txt) xml += `    <bloco_diretriz id="${i+1}">\n      ${txt}\n    </bloco_diretriz>\n`;
+            });
+            xml += `  </diretrizes_da_fundamentacao>\n`;
+            xml += `</dados_processuais>`;
+            
+            return xml;
+        }
+
+        function applyHighlight(text, isMaster) {
+            let escaped = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            escaped = escaped.replace(/(&lt;\/?[a-z_]+(?: id="[0-9]+")?&gt;)/g, '<span class="xml-tag">$1</span>');
+            if(isMaster) escaped = escaped.replace(/^(#\s.*)$/gm, '<span class="sys-heading">$1</span>');
+            return escaped;
+        }
+
+        function generateXMLData() {
+            const raw = buildXMLString();
+            document.getElementById('output-xml').innerHTML = applyHighlight(raw, false);
+            document.getElementById('output-xml').setAttribute('data-raw', raw);
+        }
+        
+        function generateMasterPrompt() {
+            const raw = buildXMLString(); const master = SYSTEM_PROMPT + "\n\n" + raw;
+            document.getElementById('output-master').innerHTML = applyHighlight(master, true);
+            document.getElementById('output-master').setAttribute('data-raw', master);
+        }
+
+        function copyContent(id, btn) {
+            navigator.clipboard.writeText(document.getElementById(id).getAttribute('data-raw')).then(() => {
+                btn.classList.add('success'); const originalHtml = btn.innerHTML;
+                btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Copiado!`;
+                const toast = document.getElementById('toast'); toast.style.display = 'block';
+                setTimeout(() => { btn.classList.remove('success'); btn.innerHTML = originalHtml; toast.style.display = 'none'; }, 2500);
+            });
+        }
+
+        document.getElementById('input-topic-name').addEventListener('input', saveState);
+        document.getElementById('editor-alegacoes').addEventListener('input', saveState);
+        window.onload = loadState;
+    </script>
+</body>
+</html>
