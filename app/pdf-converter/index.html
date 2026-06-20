@@ -13,13 +13,24 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-    <link rel="stylesheet" href="style.css">
-    <script src="script.js" defer></script>
+    <link rel="stylesheet" href="pdf-extractor.css">
+    <script src="pdf-extractor.js" defer></script>
 </head>
 <body>
 
 <div class="container" style="max-width: 95vw; width: 100%; padding: 20px;">
     
+    <!-- Botão Voltar ao Portal -->
+    <div style="width: 100%; display: flex; justify-content: flex-start; margin-bottom: 15px;">
+        <a href="../../index.html" class="btn-secondary" style="padding: 6px 12px; font-size: 13px; text-decoration: none;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            Voltar ao Portal
+        </a>
+    </div>
+
     <!-- Tela Inicial (Dropzone atualizada para processamento em lote) -->
     <div class="drop-zone" id="drop-zone" style="margin-top: 5vh; border-width: 3px;">
         <svg class="icon-svg" viewBox="0 0 24 24" style="width: 64px; height: 64px;">
