@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mestre de Gabinete V4.1 - Minuta Builder</title>
+    <link rel="stylesheet" href="./minuta-builder.css">
+</head>
+<body class="home-body">
+    <header>
+        <div id="display-topic-name" class="topic-display">Novo Tópico Recursal</div>
+        <div class="status-pill">✓ Salvo localmente</div>
+    </header>
+
+    <nav class="sidebar">
+        <button class="nav-btn active" data-target="panel-config" title="Identificação do Tópico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+        <button class="nav-btn" data-target="panel-alegacoes" title="Alegações Recursais"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></button>
+        <button class="nav-btn" data-target="panel-fundamentos" title="Fundamentos da Origem"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button>
+        <button class="nav-btn" data-target="panel-diretrizes" title="Diretrizes da Fundamentação"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></button>
+        
+        <!-- NOVO: Veredito -->
+        <button class="nav-btn" data-target="panel-veredito" title="Veredito Pretendido">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+        </button>
+
+        <div class="divider"></div>
+
+        <!-- Exportação Renomeada com Ícone Corrigido (Seta Baixo/Download) -->
+        <button class="nav-btn generate-data-btn" data-target="panel-resultado-dados" title="Gerar Arquivo de Exportação para Chat">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        </button>
+    </nav>
+
+    <main>
+        <!-- Painéis de Configuração Padrão -->
+        <div id="panel-config" class="panel active">
+            <div class="panel-header"><h1 class="panel-title">Identificação do Tópico</h1></div>
+            <div class="editor-container" style="padding: 30px;">
+                <label style="display: block; margin-bottom: 10px; font-weight: 600;">Nome do Tópico Recursal:</label>
+                <input type="text" id="input-topic-name" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 18px;">
+            </div>
+        </div>
+
+        <div id="panel-alegacoes" class="panel">
+            <div class="panel-header"><h1 class="panel-title">Alegações Recursais</h1></div>
+            <div class="editor-container">
+                <div id="editor-alegacoes" class="editor-area" contenteditable="true" oninput="saveState()"></div>
+            </div>
+        </div>
+
+        <!-- REFORMULAÇÃO: Fundamentos como texto simples -->
+        <div id="panel-fundamentos" class="panel">
+            <div class="panel-header">
+                <h1 class="panel-title">Fundamentos da Origem</h1>
+                <p class="panel-desc">Resuma os fatos principais decididos na sentença.</p>
+            </div>
+            <div class="editor-container">
+                <div id="editor-fundamentos" class="editor-area" contenteditable="true" oninput="saveState()"></div>
+            </div>
+        </div>
+
+        <!-- DIRETRIZES MODULARES -->
+        <div id="panel-diretrizes" class="panel">
+            <div class="panel-header">
+                <h1 class="panel-title">Diretrizes da Fundamentação</h1>
+                <p class="panel-desc">Construa a tese estruturada em blocos.</p>
+            </div>
+            <div id="list-diretrizes" class="draggable-list"></div>
+            <button class="btn-add" onclick="addBloco()">+ Adicionar Bloco de Diretriz</button>
+        </div>
+
+        <!-- NOVO: Veredito em texto simples -->
+        <div id="panel-veredito" class="panel">
+            <div class="panel-header">
+                <h1 class="panel-title" style="color: #e65100;">Veredito Pretendido</h1>
+                <p class="panel-desc">Insira a conclusão e dispositivo para este tópico.</p>
+            </div>
+            <div class="editor-container" style="border-left: 4px solid #e65100;">
+                <div id="editor-veredito" class="editor-area" contenteditable="true" oninput="saveState()"></div>
+            </div>
+        </div>
+
+        <!-- PAINEL RESULTADOS -->
+        <div id="panel-resultado-dados" class="panel">
+            <div class="panel-header"><h1 class="panel-title">Arquivo de Exportação para Chat</h1></div>
+            <div class="result-wrapper">
+                <button class="copy-float-btn" onclick="copyContent('output-xml', this)">Copiar Prompt</button>
+                <div id="output-xml" class="result-box"></div>
+            </div>
+        </div>
+    </main>
+    <div id="toast" class="copy-toast">Copiado!</div>
+    <script src="./minuta-builder.js"></script>
+</body>
+</html>
