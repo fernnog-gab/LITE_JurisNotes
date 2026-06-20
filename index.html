@@ -3,50 +3,313 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portal Chat.JT - Ferramentas Auxiliares</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- Correção: O arquivo global.css está na mesma pasta raiz deste index.html -->
-    <link rel="stylesheet" href="./global.css">
-</head>
-<body class="home-body">
+    <title>Juris Notes Lite - Ferramentas Auxiliares</title>
 
-    <div class="home-container">
-        <header class="home-header">
-            <h1>Auxiliar de Construção de Minutas</h1>
-            <p>Ferramentas integradas para otimização de fluxos no Chat.JT</p>
-        </header>
+    <!-- Fontes Google -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,700&family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
 
-        <div class="cards-container">
+    <!-- Ícones / Favicon -->
+    <link rel="icon" href="imagens/favicon.ico">
+
+    <style>
+        :root {
+            /* Cores Base do Sistema */
+            --trt-blue: #1a3a5c;
             
-            <!-- Correção: O nome da pasta é 'app' (sem o 's' no final) -->
-            <a href="./app/pdf-converter/index.html" class="tool-card">
-                <div class="card-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            /* Cores Conversor PDF (Amarelo) */
+            --color-pdf-bg: #FFD700;    
+            --color-pdf-text: #000000;  
+            
+            /* Cores Minuta Builder (Verde-Limão) */
+            --color-minuta-bg: #A3E635;    
+            --color-minuta-text: #000000;  
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background-color: var(--trt-blue); 
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-y: auto; 
+            color: #ffffff; 
+        }
+
+        /* Splash Screen */
+        .juris-splash {
+            position: fixed; inset: 0; z-index: 9999;
+            background-color: var(--trt-blue);
+            display: flex; align-items: center; justify-content: center;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+        .juris-splash.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+        .splash-content { text-align: center; color: #ffffff; display: flex; flex-direction: column; align-items: center; }
+        .splash-logo { width: 140px; height: auto; animation: fade-in 1s forwards; }
+        .splash-title { font-family: 'Playfair Display', serif; font-size: 1.8rem; margin-top: 12px; letter-spacing: 1.5px; }
+        .splash-lite { color: #00e5ff; font-style: italic; font-size: 1.3em; font-weight: 700; }
+        
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Painel do Hub */
+        .hub-container {
+            text-align: center;
+            max-width: 900px; /* Reduzido levemente para 2 cards ficarem bem centralizados */
+            width: 100%;
+            padding: 20px;
+            animation: fade-in 1s ease 0.5s both;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .hub-header {
+            margin-bottom: 48px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Animação da Logo */
+        .hub-logo-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 110px;  
+            height: 110px;
+            margin-bottom: 16px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 60%);
+        }
+
+        .hub-logo {
+            width: 80px;
+            height: auto;
+            margin: 0; 
+            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+            position: relative;
+            z-index: 2;
+        }
+
+        .orbiting-star {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            animation: spin-orbit 8s linear infinite; 
+            pointer-events: none; 
+        }
+
+        .orbiting-star::before {
+            content: '✦';
+            position: absolute;
+            top: 0px; 
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--color-pdf-bg); 
+            font-size: 22px;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.4);
+            animation: pulse-star 1.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes spin-orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse-star {
+            0% { opacity: 0.6; transform: translateX(-50%) scale(0.85); }
+            100% { opacity: 1; transform: translateX(-50%) scale(1.15); text-shadow: 0 0 15px rgba(255, 215, 0, 1), 0 0 30px rgba(255, 215, 0, 0.6); }
+        }
+
+        /* Título Principal com LITE destacado */
+        .hub-header h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.8rem;
+            margin: 0 0 8px 0;
+            letter-spacing: 1px;
+            cursor: default;
+        }
+
+        .text-juris {
+            /* Degradê adaptado para as cores amarelo e verde */
+            background: linear-gradient(110deg, #ffffff 0%, var(--color-pdf-bg) 40%, var(--color-minuta-bg) 70%, #ffffff 100%);
+            background-size: 200% 100%;
+            color: transparent;
+            -webkit-background-clip: text;
+            background-clip: text;
+            transition: background-position 2s ease-in-out;
+        }
+
+        .hub-header h1:hover .text-juris {
+            background-position: 100% center;
+        }
+
+        /* Destaque para a palavra LITE */
+        .text-lite {
+            font-size: 1.2em; /* Maior que o texto principal */
+            color: #00e5ff; /* Ciano / Azul Neon */
+            font-style: italic;
+            font-weight: 700;
+            text-shadow: 0 0 15px rgba(0, 229, 255, 0.4), 0 0 30px rgba(0, 229, 255, 0.2);
+            margin-left: 5px;
+        }
+
+        .hub-header p {
+            color: #cbd5e1;
+            font-size: 1.1rem;
+            letter-spacing: 1px;
+            margin: 0;
+            font-weight: 400;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 32px;
+            width: 100%;
+            padding: 10px;
+        }
+
+        /* Cinema Mode */
+        .module-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 40px 24px 32px 24px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        .module-card:hover {
+            transform: translateY(-10px) scale(1.02);
+            background: rgba(255, 255, 255, 0.09);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow: 0 15px 45px rgba(0,0,0,0.5);
+        }
+
+        .cards-grid:has(.module-card:hover) .module-card:not(:hover) {
+            opacity: 0.4;
+            filter: blur(3px) grayscale(40%);
+            transform: scale(0.98);
+        }
+
+        .module-icon {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            transition: transform 0.4s ease;
+        }
+        .module-card:hover .module-icon { transform: scale(1.1); }
+        .module-icon svg { width: 36px; height: 36px; }
+
+        .card-pdf .module-icon { color: var(--color-pdf-bg); background: rgba(255, 215, 0, 0.1); border: 1px solid rgba(255, 215, 0, 0.2); }
+        .card-minuta .module-icon { color: var(--color-minuta-bg); background: rgba(163, 230, 53, 0.1); border: 1px solid rgba(163, 230, 53, 0.2); }
+
+        /* Tags Gigantes */
+        .module-giant-tag {
+            font-size: 1.15rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            text-align: center;
+            padding: 8px 16px;
+            border-radius: 8px;
+            width: 90%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .tag-pdf-color { background-color: var(--color-pdf-bg); color: var(--color-pdf-text); }
+        .tag-minuta-color { background-color: var(--color-minuta-bg); color: var(--color-minuta-text); }
+
+        .module-desc { 
+            font-size: 0.95rem; 
+            color: #e2e8f0; 
+            line-height: 1.6; 
+            margin: 0; 
+            padding: 0 10px; 
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Splash Screen Inicial -->
+    <div id="juris-splash" class="juris-splash">
+        <div class="splash-content">
+            <img src="imagens/logo.png" alt="Juris Notes Logo" class="splash-logo" onerror="this.style.display='none'">
+            <h1 class="splash-title">Juris Notes <span class="splash-lite">LITE</span></h1>
+            <p style="font-weight: 300; letter-spacing: 1.5px; margin-top: 10px;">Carregando Módulos...</p>
+        </div>
+    </div>
+
+    <!-- Hub Principal -->
+    <div class="hub-container">
+        <div class="hub-header">
+            <div class="hub-logo-container">
+                <div class="orbiting-star"></div>
+                <img src="imagens/logo.png" alt="Juris Notes" class="hub-logo" onerror="this.style.display='none'">
+            </div>
+            
+            <!-- Título com LITE isolado para ganhar nova cor e tamanho -->
+            <h1><span class="text-juris">Juris Notes</span> <span class="text-lite">LITE</span></h1>
+            <p>Ferramentas integradas para otimização de fluxos no Chat.JT</p>
+        </div>
+
+        <div class="cards-grid">
+            <!-- Card 1: Conversão PDF (Amarelo) -->
+            <a href="./app/pdf-converter/index.html" class="module-card card-pdf">
+                <div class="module-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
                         <line x1="16" y1="13" x2="8" y2="13"></line>
                         <line x1="16" y1="17" x2="8" y2="17"></line>
                     </svg>
                 </div>
-                <h2>Conversão e Extração (PDF ➔ TXT)</h2>
-                <p>Extraia textos e provas visuais de processos judiciais em lote para alimentar a IA.</p>
+                <div class="module-giant-tag tag-pdf-color">CONVERSÃO (PDF ➔ TXT)</div>
+                <p class="module-desc">Extraia textos e provas visuais de processos judiciais em lote para alimentar a Inteligência Artificial.</p>
             </a>
 
-            <!-- Correção: O nome da pasta é 'app' (sem o 's' no final) -->
-            <a href="./app/minuta-builder/index.html" class="tool-card">
-                <div class="card-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <!-- Card 2: Diretrizes de Minutas (Verde-Limão) -->
+            <a href="./app/minuta-builder/minuta-builder.html" class="module-card card-minuta">
+                <div class="module-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                     </svg>
                 </div>
-                <h2>Diretrizes para Minutas de Voto</h2>
-                <p>Estruture o Master Prompt, defina os fundamentos da origem e as diretrizes do acórdão.</p>
+                <div class="module-giant-tag tag-minuta-color">DIRETRIZES DE MINUTAS</div>
+                <p class="module-desc">Estruture o Master Prompt, defina os fundamentos da origem e molde o veredito final do acórdão.</p>
             </a>
-
         </div>
     </div>
 
+    <script>
+        // Remove a Splash Screen suavemente após 1.5 segundos
+        document.addEventListener("DOMContentLoaded", () => {
+            setTimeout(() => {
+                document.getElementById('juris-splash').classList.add('is-hidden');
+            }, 1500);
+        });
+    </script>
 </body>
 </html>
