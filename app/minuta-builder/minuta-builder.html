@@ -32,14 +32,14 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         </button>
         
-        <!-- SVG Playmobil Corrigido (Pescoço contínuo) -->
+        <!-- Ícone do Robô Refatorado (Matematicamente Correto) -->
         <a href="https://ia.jt.jus.br/chat/assistant/6a347ac47a3edb016f0bb442" target="_blank" class="nav-btn assistant-ai-btn" title="Abrir Assistente Redator (Chat.JT)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 8c0-3.5 2.5-6 6-6s6 2.5 6 6v2H6V8z"></path>
-                <path d="M8 10v3a4 4 0 0 0 8 0v-3"></path>
-                <path d="M7 13l-1.5 9h13l-1.5-9"></path>
-                <path d="M5.5 14c-1 0-1.5 1-1.5 2v4"></path>
-                <path d="M18.5 14c1 0 1.5 1 1.5 2v4"></path>
+                <rect x="4" y="10" width="16" height="10" rx="2" ry="2"></rect>
+                <circle cx="12" cy="5" r="3"></circle>
+                <line x1="12" y1="2" x2="12" y2="2.01"></line>
+                <circle cx="9" cy="14" r="1"></circle>
+                <circle cx="15" cy="14" r="1"></circle>
             </svg>
         </a>
 
@@ -56,7 +56,10 @@
     <main>
         <!-- Painéis de Configuração Padrão -->
         <div id="panel-config" class="panel active">
-            <div class="panel-header"><h1 class="panel-title">Identificação do Tópico</h1></div>
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div><h1 class="panel-title">Identificação do Tópico</h1></div>
+                <div class="local-save-status">✓ Salvo</div>
+            </div>
             <div class="editor-container" style="padding: 30px;">
                 <label style="display: block; margin-bottom: 10px; font-weight: 600;">Nome do Tópico Recursal:</label>
                 <input type="text" id="input-topic-name" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 18px;">
@@ -64,7 +67,10 @@
         </div>
 
         <div id="panel-alegacoes" class="panel">
-            <div class="panel-header"><h1 class="panel-title">Alegações Recursais</h1></div>
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div><h1 class="panel-title">Alegações Recursais</h1></div>
+                <div class="local-save-status">✓ Salvo</div>
+            </div>
             <div class="editor-container">
                 <div id="editor-alegacoes" class="editor-area" contenteditable="true" oninput="saveState()"></div>
             </div>
@@ -72,9 +78,12 @@
 
         <!-- REFORMULAÇÃO: Fundamentos como texto simples -->
         <div id="panel-fundamentos" class="panel">
-            <div class="panel-header">
-                <h1 class="panel-title">Fundamentos da Origem</h1>
-                <p class="panel-desc">Resuma os fatos principais decididos na sentença.</p>
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h1 class="panel-title">Fundamentos da Origem</h1>
+                    <p class="panel-desc">Resuma os fatos principais decididos na sentença.</p>
+                </div>
+                <div class="local-save-status">✓ Salvo</div>
             </div>
             <div class="editor-container">
                 <div id="editor-fundamentos" class="editor-area" contenteditable="true" oninput="saveState()"></div>
@@ -83,9 +92,12 @@
 
         <!-- DIRETRIZES MODULARES -->
         <div id="panel-diretrizes" class="panel">
-            <div class="panel-header">
-                <h1 class="panel-title">Diretrizes da Fundamentação</h1>
-                <p class="panel-desc">Construa a tese estruturada em blocos.</p>
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h1 class="panel-title">Diretrizes da Fundamentação</h1>
+                    <p class="panel-desc">Construa a tese estruturada em blocos.</p>
+                </div>
+                <div class="local-save-status">✓ Salvo</div>
             </div>
             <div id="list-diretrizes" class="draggable-list"></div>
             <button class="btn-add" onclick="addBloco()">+ Adicionar Bloco de Diretriz</button>
@@ -93,9 +105,12 @@
 
         <!-- Painel Veredito Refatorado -->
         <div id="panel-veredito" class="panel">
-            <div class="panel-header">
-                <h1 class="panel-title" style="color: var(--verdict-color);">Veredito Pretendido</h1>
-                <p class="panel-desc">Insira a conclusão e dispositivo para este tópico.</p>
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h1 class="panel-title" style="color: var(--verdict-color);">Veredito Pretendido</h1>
+                    <p class="panel-desc">Insira a conclusão e dispositivo para este tópico.</p>
+                </div>
+                <div class="local-save-status">✓ Salvo</div>
             </div>
             <div class="editor-container" style="border-left: 4px solid var(--verdict-color);">
                 <div id="editor-veredito" class="editor-area" contenteditable="true" oninput="saveState()"></div>
@@ -114,14 +129,15 @@
         <!-- NOVO PAINEL: GERADOR DE PROMPT -->
         <div id="panel-ai-prompt" class="panel">
             <div class="panel-header">
-                <h1 class="panel-title" style="color: #8b5cf6;">Gerador de Prompt Lapidador</h1>
-                <p class="panel-desc">Formulário inteligente para montar o comando de execução para IA externa.</p>
+                <h1 class="panel-title" style="color: #8b5cf6;">Geração de Prompt para o Assistente Revisor</h1>
+                <p class="panel-desc">Formulário inteligente para montar o comando de execução para a IA.</p>
             </div>
             
             <div class="editor-container" style="padding: 20px; display: flex; flex-direction: column; gap: 16px; background: #f8fafc;">
                 <div>
-                    <label class="prompt-label">Cole o texto já redigido aqui ou deixe vazio</label>
-                    <textarea id="prompt-in-minuta" class="prompt-textarea" placeholder="Digite aqui..."></textarea>
+                    <label class="prompt-label">Histórico da Minuta</label>
+                    <p class="prompt-help-text">Cole aqui o texto da minuta que você já redigiu <strong>até antes do tópico atual</strong>. Isso dá contexto à Inteligência Artificial.</p>
+                    <textarea id="prompt-in-minuta" class="prompt-textarea" placeholder="Cole o relatório e a fundamentação anterior aqui..."></textarea>
                 </div>
                 <div>
                     <label class="prompt-label">NOME DO TÓPICO EM ANÁLISE</label>
@@ -147,7 +163,6 @@
             </div>
         </div>
     </main>
-    <div id="toast" class="copy-toast">Copiado!</div>
     <script src="./minuta-builder.js"></script>
 </body>
 </html>

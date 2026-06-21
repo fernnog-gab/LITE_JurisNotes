@@ -16,6 +16,32 @@ let state = {
     diretrizes: [{ id: generateId(), content: "", intent: "fallback" }]
 };
 
+let saveFeedbackTimeout = null;
+let toastTimeout = null;
+
+function showToast(message, type = 'success') {
+    let toast = document.getElementById('global-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'global-toast';
+        document.body.appendChild(toast);
+    }
+    
+    clearTimeout(toastTimeout);
+    toast.className = `toast-message ${type}`;
+    
+    const icon = type === 'success' 
+        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`;
+
+    toast.innerHTML = `${icon} <span>${message}</span>`;
+    
+    void toast.offsetWidth; 
+    toast.classList.add('show');
+
+    toastTimeout = setTimeout(() => { toast.classList.remove('show'); }, 3000);
+}
+
 // --- NAVEGAÇÃO E PERSISTÊNCIA ---
 function saveState() {
     state.topicName = document.getElementById('input-topic-name').value;
@@ -24,6 +50,26 @@ function saveState() {
     state.veredito = document.getElementById('editor-veredito').innerHTML;
     localStorage.setItem('minuta_builder_data', JSON.stringify(state));
     document.getElementById('display-topic-name').innerText = state.topicName || "Novo Tópico Recursal";
+    
+    triggerSaveFeedback();
+}
+
+function triggerSaveFeedback() {
+    const activePanel = document.querySelector('.panel.active');
+    if (!activePanel) return;
+    
+    const statusEl = activePanel.querySelector('.local-save-status');
+    if (!statusEl) return;
+
+    statusEl.innerHTML = '<span class="saving-dot"></span> Salvando...';
+    statusEl.classList.add('saving');
+
+    clearTimeout(saveFeedbackTimeout);
+    
+    saveFeedbackTimeout = setTimeout(() => {
+        statusEl.innerHTML = '✓ Salvo';
+        statusEl.classList.remove('saving');
+    }, 800);
 }
 
 function loadState() {
@@ -85,7 +131,12 @@ function selectIntent(id, key) {
 
 // --- LÓGICA DE DIRETRIZES (DRAG & DROP) ---
 function addBloco() { state.diretrizes.push({ id: generateId(), content: "", intent: "fallback" }); renderList(); saveState(); }
-function deleteBloco(id) { state.diretrizes = state.diretrizes.filter(i => i.id !== id); renderList(); saveState(); }
+function deleteBloco(id) { 
+    state.diretrizes = state.diretrizes.filter(i => i.id !== id); 
+    renderList(); 
+    saveState(); 
+    showToast('Bloco de diretriz removido.', 'danger'); 
+}
 function updateBloco(id, content) { state.diretrizes.find(i => i.id == id).content = content; saveState(); }
 
 function renderList() {
@@ -217,10 +268,12 @@ function generateXMLData() {
 }
 
 function copyContent(id, btn) {
-    navigator.clipboard.writeText(document.getElementById(id).getAttribute('data-raw')).then(() => {
-        const originalText = btn.innerHTML;
-        btn.innerHTML = `✓ Copiado!`;
-        setTimeout(() => { btn.innerHTML = originalText; }, 2000);
+    const content = document.getElementById(id).getAttribute('data-raw');
+    navigator.clipboard.writeText(content).then(() => {
+        showToast('Conteúdo copiado com sucesso!', 'success');
+    }).catch(err => {
+        showToast('Falha ao copiar texto.', 'danger');
+        console.error(err);
     });
 }
 
@@ -232,7 +285,7 @@ function gerarPromptFinal() {
     const txtRascunho = document.getElementById('prompt-in-rascunho').value.trim();
 
     if (!txtRascunho) {
-        alert("O rascunho do Chat.JT é obrigatório para realizar a lapidação.");
+        showToast("O rascunho da IA é obrigatório para realizar a lapidação.", "danger");
         return;
     }
 
