@@ -13,6 +13,7 @@ function generateId() { return crypto.randomUUID ? crypto.randomUUID() : Date.no
 
 let state = {
     processNumber: "", topicName: "", alegacoes: "", fundamentos: "", veredito: "",
+    faseProcessual: "Conhecimento", tipoRecurso: "Recurso Ordinário (RO)",
     diretrizes: [{ id: generateId(), content: "", intent: "fallback" }]
 };
 
@@ -71,6 +72,8 @@ function saveState() {
     saveStateDebounceTimer = setTimeout(() => {
         state.processNumber = currentProcess;
         state.topicName = currentTopic;
+        state.faseProcessual = document.getElementById('select-fase').value;
+        state.tipoRecurso = document.getElementById('select-recurso').value;
         state.alegacoes = document.getElementById('editor-alegacoes').innerHTML;
         state.fundamentos = document.getElementById('editor-fundamentos').innerHTML;
         state.veredito = document.getElementById('editor-veredito').innerHTML;
@@ -106,6 +109,9 @@ function loadState() {
         document.getElementById('editor-veredito').innerHTML = state.veredito || "";
         if(!state.diretrizes) state.diretrizes = [{ id: generateId(), content: "", intent: "fallback" }];
         
+        document.getElementById('select-fase').value = state.faseProcessual || "Conhecimento";
+        document.getElementById('select-recurso').value = state.tipoRecurso || "Recurso Ordinário (RO)";
+
         document.getElementById('display-topic-name').innerText = state.topicName || "Novo Tópico Recursal";
         document.getElementById('display-process-number').innerText = state.processNumber || "Sem Processo";
     }
@@ -241,8 +247,10 @@ function sanitizeToMarkdown(html) {
 function buildExportPayload() {
     let payload = `<diretrizes_do_assessor>\n`;
     
-    // Tag exigida pelo Prompt para calibragem de rigor da IA
-    payload += `  <diretriz_cognitiva_ia>Fase de Conhecimento / Padrão Recursal</diretriz_cognitiva_ia>\n\n`;
+    // Tag exigida pelo Prompt para calibragem de rigor da IA (Dinâmica)
+    const fase = state.faseProcessual || "Conhecimento";
+    const recurso = state.tipoRecurso || "Recurso Ordinário (RO)";
+    payload += `  <diretriz_cognitiva_ia>Fase de ${fase} / ${recurso}</diretriz_cognitiva_ia>\n\n`;
 
     payload += `  <relatorio_do_conflito>\n`;
     payload += `    <numero_processo>${state.processNumber || "NAO_INFORMADO"}</numero_processo>\n`;
@@ -494,12 +502,15 @@ function confirmarNovoTopico() {
     // Purifica o estado global na memória
     state = {
         processNumber: "", topicName: "", alegacoes: "", fundamentos: "", veredito: "",
+        faseProcessual: "Conhecimento", tipoRecurso: "Recurso Ordinário (RO)",
         diretrizes: [{ id: generateId(), content: "", intent: "fallback" }]
     };
     
     // Purifica o DOM visual
     document.getElementById('input-process-number').value = "";
     document.getElementById('input-topic-name').value = "";
+    document.getElementById('select-fase').value = "Conhecimento";
+    document.getElementById('select-recurso').value = "Recurso Ordinário (RO)";
     document.getElementById('editor-alegacoes').innerHTML = "";
     document.getElementById('editor-fundamentos').innerHTML = "";
     document.getElementById('editor-veredito').innerHTML = "";
@@ -560,6 +571,8 @@ window.onload = loadState;
 
 // --- DELEGAÇÃO DE EVENTOS DE LIMPEZA E INPUTS ---
 document.getElementById('input-process-number').addEventListener('input', saveState);
+document.getElementById('select-fase').addEventListener('change', saveState);
+document.getElementById('select-recurso').addEventListener('change', saveState);
 
 document.addEventListener('click', function(e) {
     if (e.target.closest('.btn-clear-input')) {
