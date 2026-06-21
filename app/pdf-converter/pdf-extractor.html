@@ -19,20 +19,8 @@
 <body>
 
 <div class="container" style="max-width: 95vw; width: 100%; padding: 20px;">
-    
-     <!-- Botão Voltar ao Portal -->
-    <div id="top-back-container" style="width: 100%; display: flex; justify-content: flex-start; margin-bottom: 15px;">
-        <a href="../../index.html" class="btn-home-module" title="Voltar ao Portal">
-            <!-- Ícone de Casa -->
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                <polyline points="9 22 9 12 15 12 15 22"></polyline>
-            </svg>
-        </a>
-    </div>
-
     <!-- Tela Inicial (Dropzone atualizada para processamento em lote) -->
-    <div class="drop-zone" id="drop-zone" style="margin-top: 5vh;">
+    <div class="drop-zone" id="drop-zone" tabindex="0" style="margin-top: 5vh; outline: none;">
         <svg class="icon-svg" viewBox="0 0 24 24" style="width: 64px; height: 64px;">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="17 8 12 3 7 8"></polyline>
@@ -48,22 +36,28 @@
         <div class="toolbar-header">
             
             <div class="toolbar-group">
-                <button id="btn-home" class="btn-secondary btn-toolbar" title="Voltar à tela inicial">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                <!-- Botão Voltar ao Portal (Corrigido com aria-label) -->
+                <button id="btn-home" class="btn-secondary btn-toolbar" title="Voltar ao Portal" aria-label="Voltar à tela inicial do Portal">
+                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                </button>
+
+                <!-- NOVO: Botão Iniciar Novo Processo -->
+                <button id="btn-new" class="btn-secondary btn-toolbar" title="Novo Processo" aria-label="Limpar área e iniciar nova extração">
+                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
                 </button>
                 
                 <!-- Menu de seleção rápida para alternar entre arquivos carregados -->
                 <select id="active-file-select" class="custom-select is-hidden" style="width: 200px; padding: 6px 10px; font-size: 13px; height: 34px;">
                 </select>
 
-                <button id="btn-prev" class="btn-secondary btn-toolbar">◀ Ant</button>
+                <button id="btn-prev" class="btn-secondary btn-toolbar" aria-label="Página Anterior">◀ Ant</button>
                 
                 <div class="page-control-group">
-                    Pág <input type="number" id="page-input" class="page-control-input" min="1" value="1"> 
+                    Pág <input type="number" id="page-input" class="page-control-input" min="1" value="1" aria-label="Número da Página"> 
                     de <span id="page-total">0</span>
                 </div>
                 
-                <button id="btn-next" class="btn-secondary btn-toolbar">Próx ▶</button>
+                <button id="btn-next" class="btn-secondary btn-toolbar" aria-label="Próxima Página">Próx ▶</button>
             </div>
 
             <div class="toolbar-group">

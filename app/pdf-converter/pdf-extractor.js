@@ -1,3 +1,10 @@
+// Configurações de Ambiente Global
+const APP_CONFIG = {
+    urls: {
+        portalHome: '../../index.html'
+    }
+};
+
 // Configuração do PDF.js Web Worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
@@ -66,7 +73,6 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
     if (files.length === 0) return;
     
     document.getElementById('drop-zone').classList.add('is-hidden');
-    document.getElementById('top-back-container').classList.add('is-hidden');
     document.getElementById('curation-workspace').classList.remove('is-hidden');
     
     // Reseta estado anterior antes do processamento do novo lote
@@ -443,17 +449,43 @@ async function destroyCurrentPDFView() {
     document.getElementById('text-layer').innerHTML = '';
 }
 
+async function resetAppToInitialState() {
+    await destroyCurrentPDFView();
+    
+    // Transição visual
+    document.getElementById('curation-workspace').classList.add('is-hidden');
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.classList.remove('is-hidden');
+    
+    // Limpeza de estado e formulários
+    document.getElementById('file-input').value = ""; 
+    renderSnippetsList();
+    resetExtractionState();
+
+    // A11y: Devolve o foco seguro ao container principal para fluxo de teclado
+    dropZone.focus();
+}
+
+// Ação 1: Voltar ao Portal (Redirecionamento controlado)
 document.getElementById('btn-home').addEventListener('click', async () => {
-    if(confirm("Deseja voltar à tela inicial? Todo o progresso de recortes não salvos será perdido.")) {
+    if(confirm("Deseja voltar ao portal? Todo o progresso não salvo será perdido.")) {
         await destroyCurrentPDFView();
-        
-        document.getElementById('curation-workspace').classList.add('is-hidden');
-        document.getElementById('drop-zone').classList.remove('is-hidden');
-        document.getElementById('top-back-container').classList.remove('is-hidden');
-        
-        document.getElementById('file-input').value = ""; 
-        renderSnippetsList();
-        resetExtractionState();
+        window.location.href = APP_CONFIG.urls.portalHome;
+    }
+});
+
+// Ação 2: Iniciar Novo Processo na mesma página (Ciclo de vida contínuo)
+document.getElementById('btn-new').addEventListener('click', async () => {
+    if(confirm("Deseja iniciar um novo processo? Os arquivos atuais serão descartados.")) {
+        await resetAppToInitialState();
+    }
+});
+
+// Proteção Arquitetural: Interceptação de BFCache
+// Garante que se o usuário usar o botão "Voltar" do navegador após ir ao portal, a página se resete.
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+        resetAppToInitialState();
     }
 });
 // ============================================================================
