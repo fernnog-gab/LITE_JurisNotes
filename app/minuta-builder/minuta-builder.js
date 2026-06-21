@@ -158,13 +158,36 @@ function toggleDropdown(event, id) {
     targetDropdown.classList.toggle('open');
 }
 
-function selectIntent(id, key) {
+// =========================================
+// MOTOR DE INTEGRIDADE DE ESTADO (NOVO)
+// =========================================
+function syncDOMToState() {
+    document.querySelectorAll('#list-diretrizes .drag-item').forEach(item => {
+        const id = item.dataset.id;
+        const editorEl = item.querySelector('.editor-area');
+        const stateItem = state.diretrizes.find(i => i.id === id);
+        if (stateItem && editorEl) {
+            stateItem.content = editorEl.innerHTML;
+        }
+    });
+}
+
+function selectIntent(event, id, key) {
+    event.stopPropagation();
+    syncDOMToState();
     state.diretrizes.find(i => i.id == id).intent = key;
-    saveState(); renderList();
+    document.querySelectorAll('.custom-dropdown.open').forEach(dd => dd.classList.remove('open'));
+    saveState(); 
+    renderList();
 }
 
 // --- LÓGICA DE DIRETRIZES (DRAG & DROP) ---
-function addBloco() { state.diretrizes.push({ id: generateId(), content: "", intent: "fallback" }); renderList(); saveState(); }
+function addBloco() { 
+    syncDOMToState(); 
+    state.diretrizes.push({ id: generateId(), content: "", intent: "fallback" }); 
+    renderList(); 
+    saveState(); 
+}
 function deleteBloco(id) { 
     state.diretrizes = state.diretrizes.filter(i => i.id !== id); 
     renderList(); 
@@ -184,28 +207,40 @@ function renderList() {
         const currentIntent = INTENT_CATALOG[item.intent || 'fallback'];
         
         const optionsHTML = Object.keys(INTENT_CATALOG).map(key => `
-            <div class="dropdown-option" onclick="selectIntent('${item.id}', '${key}')">
+            <div class="dropdown-option" onclick="selectIntent(event, '${item.id}', '${key}')">
                 <div style="color: ${INTENT_CATALOG[key].color}">${INTENT_CATALOG[key].icon}</div>
                 <span>${INTENT_CATALOG[key].label}</span>
             </div>
         `).join('');
 
-        // ISOLAMENTO ARQUITETURAL: .drag-grip-zone isolado da .action-zone
         div.innerHTML = `
             <div class="block-badge">${index + 1}</div>
-            <div class="card-header-bar" style="border-top: 4px solid ${currentIntent.color};">
+            
+            <div class="intent-icon-wrapper" style="background-color: ${currentIntent.color};">
+                ${currentIntent.icon}
+            </div>
+
+            <div class="card-header-bar" style="background-color: ${currentIntent.color};">
                 <div class="drag-grip-zone" title="Arraste para reordenar">⠿</div>
                 <div class="action-zone">
                     <div class="custom-dropdown" onclick="toggleDropdown(event, '${item.id}')">
-                        <div class="dropdown-selected" style="background-color: ${currentIntent.color};">
-                            ${currentIntent.icon} <span>${currentIntent.label}</span> <span class="dropdown-arrow">▼</span>
+                        <div class="dropdown-selected dropdown-dark-mode">
+                            <span>${currentIntent.label}</span> <span class="dropdown-arrow">▼</span>
                         </div>
                         <div class="dropdown-list">${optionsHTML}</div>
                     </div>
-                    <button class="btn-delete-block" onclick="deleteBloco('${item.id}')">✕</button>
+                    
+                    <button class="btn-delete-block" onclick="deleteBloco('${item.id}')" title="Excluir Diretriz">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                    </button>
                 </div>
             </div>
-            <div class="drag-content" style="padding: 15px;">
+            <div class="drag-content editor-padding-safe">
                 <div class="editor-area" contenteditable="true" oninput="updateBloco('${item.id}', this.innerHTML)">${item.content}</div>
             </div>`;
         
