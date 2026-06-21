@@ -183,7 +183,10 @@
         <div id="panel-diretrizes" class="panel">
             <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                    <h1 class="panel-title">Diretrizes da Fundamentação</h1>
+                    <h1 class="panel-title" style="display: flex; align-items: center; gap: 10px;">
+                        Diretrizes da Fundamentação
+                        <button class="btn-help-icon" onclick="abrirModalAjuda()" title="Entenda o que faz cada bloco de diretriz">?</button>
+                    </h1>
                     <p class="panel-desc">Construa a tese estruturada em blocos.</p>
                 </div>
                 <div class="local-save-status">✓ Salvo</div>
@@ -274,6 +277,52 @@
                 <button class="btn-modal-cancel" onclick="fecharModal()">Cancelar</button>
                 <button class="btn-modal-confirm" onclick="confirmarNovoTopico()">Sim, limpar tela</button>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE AJUDA: GLOSSÁRIO DE DIRETRIZES -->
+    <div id="modal-ajuda" class="modal-overlay" onclick="fecharModalAjudaFora(event)">
+        <div class="modal-content" style="max-width: 600px; text-align: left; padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+                <h2 style="font-size: 18px; margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    Dicionário de Diretrizes para a IA
+                </h2>
+                <button onclick="fecharModalAjuda()" style="background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer;">✕</button>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 16px; max-height: 60vh; overflow-y: auto; padding-right: 10px;" class="help-scroll">
+                <div class="help-item">
+                    <strong style="color: #4b5563;">Fato Bruto / Padrão:</strong>
+                    <p>Matéria-prima crua. Recortes de prova, IDs, depoimentos. A IA lerá isso e construirá a argumentação em volta desses fatos.</p>
+                </div>
+                <div class="help-item">
+                    <strong style="color: #00695c;">Base Legal:</strong>
+                    <p>Artigos de lei, Súmulas e OJs do TST aplicáveis. A IA fará a subsunção (ligará o Fato Bruto a esta Base Legal).</p>
+                </div>
+                <div class="help-item">
+                    <strong style="color: #7b1fa2;">Premissa Lógica:</strong>
+                    <p>Verdade processual inquestionável definida pelo Juiz/Assessor. A IA não pode discordar ou interpretar, deve apenas acatar.</p>
+                </div>
+                <div class="help-item">
+                    <strong style="color: #c62828;">Comando Direto:</strong>
+                    <p>Ordem estrita para a redação. (Ex: <em>"Não mencione a segunda testemunha"</em> ou <em>"Seja breve na análise do dano moral"</em>).</p>
+                </div>
+                <div class="help-item">
+                    <strong style="color: #8B4513;">Refutação de Mérito:</strong>
+                    <p>O motivo pelo qual a tese da parte recorrente está errada. A IA usará isso para rechaçar expressamente as alegações.</p>
+                </div>
+                <div class="help-item">
+                    <strong style="color: #5d4037;">Filtro Prejudicial:</strong>
+                    <p>Questões preliminares (Ex: Prescrição, Inépcia). A IA redigirá a análise deste ponto ANTES de adentrar no mérito do tópico.</p>
+                </div>
+                <div class="help-item">
+                    <strong style="color: #1565c0;">Texto Fixo:</strong>
+                    <p>Blocos de texto (ex: ementas de jurisprudência padronizadas) que a IA deve copiar e colar literalmente, sem alterar uma vírgula.</p>
+                </div>
+            </div>
+            
+            <button class="btn-primary" style="width: 100%; margin-top: 20px; font-size: 14px;" onclick="fecharModalAjuda()">Entendi</button>
         </div>
     </div>
 

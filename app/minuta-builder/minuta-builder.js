@@ -496,6 +496,12 @@ function carregarDoHistoricoDB(id) {
 
 function abrirModalNovoTopico() { document.getElementById('modal-confirmacao').classList.add('active'); }
 function fecharModal() { document.getElementById('modal-confirmacao').classList.remove('active'); }
+
+// Funções do Modal de Ajuda (Glossário)
+function abrirModalAjuda() { document.getElementById('modal-ajuda').classList.add('active'); }
+function fecharModalAjuda() { document.getElementById('modal-ajuda').classList.remove('active'); }
+function fecharModalAjudaFora(e) { if(e.target.id === 'modal-ajuda') fecharModalAjuda(); }
+
 function confirmarNovoTopico() {
     salvarNoHistoricoDB();
     
