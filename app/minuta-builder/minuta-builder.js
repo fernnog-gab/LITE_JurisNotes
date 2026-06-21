@@ -229,13 +229,14 @@ function sanitizeToMarkdown(html) {
 }
 
 function buildExportPayload() {
-    // Reconstrução limpa do String Liteteral, sem cortes arbitrários
     let payload = `<diretrizes_do_assessor>\n`;
+    
+    // Tag exigida pelo Prompt para calibragem de rigor da IA
+    payload += `  <diretriz_cognitiva_ia>Fase de Conhecimento / Padrão Recursal</diretriz_cognitiva_ia>\n\n`;
+
     payload += `  <relatorio_do_conflito>\n`;
     payload += `    <numero_processo>${state.processNumber || "NAO_INFORMADO"}</numero_processo>\n`;
     payload += `    <topico_recursal>${state.topicName || "Tópico não informado"}</topico_recursal>\n`;
-    
-    // Injeções Modulares de Texto Puro
     payload += `    <alegacoes_recursais>\n      ${sanitizeToMarkdown(state.alegacoes).replace(/\n/g, '\n      ')}\n    </alegacoes_recursais>\n`;
     payload += `    <fundamentos_da_origem>\n      ${sanitizeToMarkdown(state.fundamentos).replace(/\n/g, '\n      ')}\n    </fundamentos_da_origem>\n`;
     payload += `  </relatorio_do_conflito>\n\n`;
@@ -244,7 +245,7 @@ function buildExportPayload() {
         const blocos = state.diretrizes.filter(b => INTENT_CATALOG[b.intent || 'fallback'].bubbleTag === tagId);
         if (blocos.length === 0) return "";
         let res = `  <${tagId}>\n`;
-        blocos.forEach(b => { res += `    - ${sanitizeToMarkdown(b.content)}\n\n`; });
+        blocos.forEach(b => { res += `    - ${sanitizeToMarkdown(b.content)}\n`; });
         res += `  </${tagId}>\n\n`;
         return res;
     };
@@ -252,24 +253,36 @@ function buildExportPayload() {
     payload += bubbleUp('questoes_preliminares_e_prejudiciais');
     payload += bubbleUp('base_legal_obrigatoria');
 
-    // Injeção Direta do Veredito
-    payload += `  <decisao_magistrado_pretendida>\n    ${sanitizeToMarkdown(state.veredito).replace(/\n/g, '\n    ')}\n  </decisao_magistrado_pretendida>\n\n`;
+    // NOVA ESTRUTURA: Matriz Dialética Mapeada (Substitui a antiga <analise_estruturada>)
+    payload += `  <analise_da_prova>\n`;
+    
+    // Filtra apenas fatos crus (fallback ou texto) para a tag de Inconteste
+    const fatosBrutos = state.diretrizes.filter(b => !INTENT_CATALOG[b.intent || 'fallback'].bubbleTag && ['fallback', 'texto'].includes(b.intent || 'fallback'));
+    if (fatosBrutos.length > 0) {
+        payload += `    <fato_bruto_inconteste>\n`;
+        fatosBrutos.forEach((b) => {
+            const txt = sanitizeToMarkdown(b.content).replace(/\n/g, '\n      ');
+            if(txt && txt !== "N/A") payload += `      - ${txt}\n`;
+        });
+        payload += `    </fato_bruto_inconteste>\n\n`;
+    }
 
-    payload += `  <analise_estruturada>\n`;
-    let focusCounter = 1;
-    state.diretrizes.forEach((b) => {
-        const intentDef = INTENT_CATALOG[b.intent || 'fallback'];
-        if (intentDef.bubbleTag) return; 
-        
-        const txt = sanitizeToMarkdown(b.content).replace(/\n/g, '\n      ');
-        if(txt && txt !== "N/A") {
-            payload += `    <diretriz_foco_${focusCounter}>\n`;
-            payload += `      ${intentDef.prefix} ${txt}\n`;
-            payload += `    </diretriz_foco_${focusCounter}>\n\n`;
-            focusCounter++;
-        }
-    });
-    payload += `  </analise_estruturada>\n`;
+    // Filtra comandos cognitivos (premissa, comando, refutacao) para a tag Vinculante
+    const diretrizesVinculantes = state.diretrizes.filter(b => !INTENT_CATALOG[b.intent || 'fallback'].bubbleTag && !['fallback', 'texto'].includes(b.intent || 'fallback'));
+    if (diretrizesVinculantes.length > 0) {
+        payload += `    <diretrizes_vinculantes_do_assessor>\n`;
+        diretrizesVinculantes.forEach((b) => {
+            const intentDef = INTENT_CATALOG[b.intent || 'fallback'];
+            const txt = sanitizeToMarkdown(b.content).replace(/\n/g, '\n      ');
+            if(txt && txt !== "N/A") payload += `      - ${intentDef.prefix} ${txt}\n`;
+        });
+        payload += `    </diretrizes_vinculantes_do_assessor>\n`;
+    }
+    
+    payload += `  </analise_da_prova>\n\n`;
+
+    payload += `  <decisao_magistrado_pretendida>\n    ${sanitizeToMarkdown(state.veredito).replace(/\n/g, '\n    ')}\n  </decisao_magistrado_pretendida>\n`;
+    
     payload += `</diretrizes_do_assessor>`;
     return payload;
 }
