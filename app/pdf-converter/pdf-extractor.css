@@ -591,3 +591,31 @@ svg { flex-shrink: 0; }
     box-shadow: 0 0 0 4px rgba(255, 215, 0, 0.3);
     outline: none;
 }
+
+/* ==========================================================================
+   Botão Home Absoluto
+   ========================================================================== */
+.btn-home-absolute {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--bg-color-light);
+    color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    padding: 8px 14px;
+    border-radius: var(--radius);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    z-index: 100;
+}
+
+.btn-home-absolute:hover {
+    background-color: var(--bg-color-hover);
+    transform: translateY(-2px);
+}

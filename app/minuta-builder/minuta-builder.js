@@ -54,19 +54,29 @@ function aplicarMascaraCNJ(input) {
     input.value = v;
 }
 
+let saveStateDebounceTimer;
+
 function saveState() {
-    state.processNumber = document.getElementById('input-process-number').value;
-    state.topicName = document.getElementById('input-topic-name').value;
-    state.alegacoes = document.getElementById('editor-alegacoes').innerHTML;
-    state.fundamentos = document.getElementById('editor-fundamentos').innerHTML;
-    state.veredito = document.getElementById('editor-veredito').innerHTML;
+    // FASE 1: Síncrona (Atualização Imediata da Interface)
+    const currentTopic = document.getElementById('input-topic-name').value;
+    const currentProcess = document.getElementById('input-process-number').value;
     
-    localStorage.setItem('minuta_builder_data', JSON.stringify(state));
-    
-    document.getElementById('display-topic-name').innerText = state.topicName || "Novo Tópico Recursal";
-    document.getElementById('display-process-number').innerText = state.processNumber || "Sem Processo";
+    document.getElementById('display-topic-name').innerText = currentTopic || "Novo Tópico Recursal";
+    document.getElementById('display-process-number').innerText = currentProcess || "Sem Processo";
     
     triggerSaveFeedback();
+
+    // FASE 2: Assíncrona (Debounce para I/O no disco)
+    clearTimeout(saveStateDebounceTimer);
+    saveStateDebounceTimer = setTimeout(() => {
+        state.processNumber = currentProcess;
+        state.topicName = currentTopic;
+        state.alegacoes = document.getElementById('editor-alegacoes').innerHTML;
+        state.fundamentos = document.getElementById('editor-fundamentos').innerHTML;
+        state.veredito = document.getElementById('editor-veredito').innerHTML;
+        
+        localStorage.setItem('minuta_builder_data', JSON.stringify(state));
+    }, 600);
 }
 
 function triggerSaveFeedback() {
@@ -480,16 +490,27 @@ function abrirModalNovoTopico() { document.getElementById('modal-confirmacao').c
 function fecharModal() { document.getElementById('modal-confirmacao').classList.remove('active'); }
 function confirmarNovoTopico() {
     salvarNoHistoricoDB();
-    state.topicName = ""; state.alegacoes = ""; state.fundamentos = ""; state.veredito = "";
-    state.diretrizes = [{ id: generateId(), content: "", intent: "fallback" }];
+    
+    // Purifica o estado global na memória
+    state = {
+        processNumber: "", topicName: "", alegacoes: "", fundamentos: "", veredito: "",
+        diretrizes: [{ id: generateId(), content: "", intent: "fallback" }]
+    };
+    
+    // Purifica o DOM visual
+    document.getElementById('input-process-number').value = "";
     document.getElementById('input-topic-name').value = "";
     document.getElementById('editor-alegacoes').innerHTML = "";
     document.getElementById('editor-fundamentos').innerHTML = "";
     document.getElementById('editor-veredito').innerHTML = "";
-    saveState(); renderList(); fecharModal();
+    
+    saveState(); 
+    renderList(); 
+    fecharModal();
+    
     document.querySelector('[data-target="panel-processo"]').click();
     setTimeout(() => document.getElementById('input-process-number').focus(), 100);
-    showToast("Área limpa com sucesso.", "success");
+    showToast("Área limpa e pronta para novo processo.", "success");
 }
 
 function exportarBackup() {
@@ -536,3 +557,53 @@ dragContainer.addEventListener('dragover', e => {
 
 document.getElementById('input-topic-name').addEventListener('input', saveState);
 window.onload = loadState;
+
+// --- DELEGAÇÃO DE EVENTOS DE LIMPEZA E INPUTS ---
+document.getElementById('input-process-number').addEventListener('input', saveState);
+
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.btn-clear-input')) {
+        const targetId = e.target.closest('.btn-clear-input').dataset.target;
+        const el = document.getElementById(targetId);
+        if (el) { el.value = ''; el.focus(); saveState(); }
+    }
+    
+    if (e.target.closest('.btn-clear-panel')) {
+        const targetId = e.target.closest('.btn-clear-panel').dataset.target;
+        const el = document.getElementById(targetId);
+        if (el) { el.innerHTML = ''; el.focus(); saveState(); }
+    }
+});
+
+// --- INTERCEPTOR DE PASTE (RANGE API) ---
+document.addEventListener('paste', function(e) {
+    const editableTarget = e.target.closest('[contenteditable="true"]');
+    if (!editableTarget) return;
+
+    e.preventDefault();
+    const plainText = (e.clipboardData || window.clipboardData).getData('text/plain');
+    if (!plainText) return;
+
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+
+    const fragment = document.createDocumentFragment();
+    const lines = plainText.split(/\r?\n/);
+    
+    lines.forEach((line, index) => {
+        if (index > 0) fragment.appendChild(document.createElement('br'));
+        if (line.length > 0) fragment.appendChild(document.createTextNode(line));
+    });
+
+    range.insertNode(fragment);
+    editableTarget.normalize(); 
+
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    
+    saveState();
+});

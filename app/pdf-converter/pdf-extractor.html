@@ -9,9 +9,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Ícones / Favicon Padrão (Desktop/Browsers) -->
-    <link rel="icon" type="image/x-icon" href="imagens/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="imagens/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="imagens/favicon-16x16.png">
+    <link rel="icon" type="image/x-icon" href="../../imagens/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../imagens/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../../imagens/favicon-16x16.png">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf_viewer.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -21,7 +21,14 @@
 </head>
 <body>
 
-<div class="container" style="max-width: 95vw; width: 100%; padding: 20px;">
+<div class="container" style="max-width: 95vw; width: 100%; padding: 20px; position: relative;">
+    
+    <!-- NOVO BOTÃO HOME -->
+    <a href="../../index.html" class="btn-home-absolute" title="Voltar ao Portal">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+        Início
+    </a>
+
     <!-- Tela Inicial (Dropzone atualizada para processamento em lote) -->
     <div class="drop-zone" id="drop-zone" tabindex="0" style="margin-top: 5vh; outline: none;">
         <svg class="icon-svg" viewBox="0 0 24 24" style="width: 64px; height: 64px;">

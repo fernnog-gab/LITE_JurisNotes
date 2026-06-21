@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Juris Notes - Lite</title>
     <!-- Ícones / Favicon Padrão (Desktop/Browsers) -->
-    <link rel="icon" type="image/x-icon" href="imagens/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="imagens/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="imagens/favicon-16x16.png">
+    <link rel="icon" type="image/x-icon" href="../../imagens/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../../imagens/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../../imagens/favicon-16x16.png">
     <link rel="stylesheet" href="./minuta-builder.css">
 </head>
-<body class="home-body">
+<body>
     <header>
         <div class="header-tags">
             <div id="display-process-number" class="topic-display process-tag" title="Número do Processo">Sem Processo</div>
@@ -90,7 +90,10 @@
             </div>
             <div class="editor-container" style="padding: 30px;">
                 <label style="display: block; margin-bottom: 10px; font-weight: 600;">Número do Processo (CNJ):</label>
-                <input type="text" id="input-process-number" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 18px; font-family: monospace;" placeholder="Ex: 0000000-00.0000.5.00.0000" oninput="aplicarMascaraCNJ(this); saveState();">
+                <div class="input-wrapper">
+                    <input type="text" id="input-process-number" class="input-with-clear" style="font-family: monospace;" placeholder="Ex: 0000000-00.0000.5.00.0000" oninput="aplicarMascaraCNJ(this);">
+                    <button class="btn-clear-input" data-target="input-process-number" title="Limpar campo">✕</button>
+                </div>
             </div>
         </div>
 
@@ -108,14 +111,20 @@
             </div>
             <div class="editor-container" style="padding: 30px;">
                 <label style="display: block; margin-bottom: 10px; font-weight: 600;">Nome do Tópico Recursal:</label>
-                <input type="text" id="input-topic-name" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 18px;">
+                <div class="input-wrapper">
+                    <input type="text" id="input-topic-name" class="input-with-clear">
+                    <button class="btn-clear-input" data-target="input-topic-name" title="Limpar campo">✕</button>
+                </div>
             </div>
         </div>
 
         <div id="panel-alegacoes" class="panel">
             <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div><h1 class="panel-title">Alegações Recursais</h1></div>
-                <div class="local-save-status">✓ Salvo</div>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button class="btn-clear-panel" data-target="editor-alegacoes">Limpar</button>
+                    <div class="local-save-status">✓ Salvo</div>
+                </div>
             </div>
             <div class="editor-container">
                 <div id="editor-alegacoes" class="editor-area" contenteditable="true" oninput="saveState()"></div>
@@ -129,7 +138,10 @@
                     <h1 class="panel-title">Fundamentos da Origem</h1>
                     <p class="panel-desc">Resuma os fatos principais decididos na sentença.</p>
                 </div>
-                <div class="local-save-status">✓ Salvo</div>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button class="btn-clear-panel" data-target="editor-fundamentos">Limpar</button>
+                    <div class="local-save-status">✓ Salvo</div>
+                </div>
             </div>
             <div class="editor-container">
                 <div id="editor-fundamentos" class="editor-area" contenteditable="true" oninput="saveState()"></div>
@@ -156,7 +168,10 @@
                     <h1 class="panel-title" style="color: var(--verdict-color);">Veredito Pretendido</h1>
                     <p class="panel-desc">Insira a conclusão e dispositivo para este tópico.</p>
                 </div>
-                <div class="local-save-status">✓ Salvo</div>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button class="btn-clear-panel" data-target="editor-veredito">Limpar</button>
+                    <div class="local-save-status">✓ Salvo</div>
+                </div>
             </div>
             <div class="editor-container" style="border-left: 4px solid var(--verdict-color);">
                 <div id="editor-veredito" class="editor-area" contenteditable="true" oninput="saveState()"></div>
