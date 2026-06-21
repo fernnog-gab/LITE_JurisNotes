@@ -12,7 +12,7 @@ const INTENT_CATALOG = {
 function generateId() { return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36); }
 
 let state = {
-    topicName: "", alegacoes: "", fundamentos: "", veredito: "",
+    processNumber: "", topicName: "", alegacoes: "", fundamentos: "", veredito: "",
     diretrizes: [{ id: generateId(), content: "", intent: "fallback" }]
 };
 
@@ -42,14 +42,29 @@ function showToast(message, type = 'success') {
     toastTimeout = setTimeout(() => { toast.classList.remove('show'); }, 3000);
 }
 
-// --- NAVEGAÇÃO E PERSISTÊNCIA ---
+// --- MÁSCARA E PERSISTÊNCIA ---
+function aplicarMascaraCNJ(input) {
+    let v = input.value.replace(/\D/g, "");
+    if (v.length > 20) v = v.substring(0, 20);
+    if (v.length > 7) v = v.replace(/^(\d{7})(\d)/, "$1-$2");
+    if (v.length > 10) v = v.replace(/^(\d{7})\-(\d{2})(\d)/, "$1-$2.$3");
+    if (v.length > 14) v = v.replace(/^(\d{7})\-(\d{2})\.(\d{4})(\d)/, "$1-$2.$3.$4");
+    if (v.length > 15) v = v.replace(/^(\d{7})\-(\d{2})\.(\d{4})\.(\d{1})(\d)/, "$1-$2.$3.$4.$5");
+    if (v.length > 17) v = v.replace(/^(\d{7})\-(\d{2})\.(\d{4})\.(\d{1})\.(\d{2})(\d)/, "$1-$2.$3.$4.$5.$6");
+    input.value = v;
+}
+
 function saveState() {
+    state.processNumber = document.getElementById('input-process-number').value;
     state.topicName = document.getElementById('input-topic-name').value;
     state.alegacoes = document.getElementById('editor-alegacoes').innerHTML;
     state.fundamentos = document.getElementById('editor-fundamentos').innerHTML;
     state.veredito = document.getElementById('editor-veredito').innerHTML;
+    
     localStorage.setItem('minuta_builder_data', JSON.stringify(state));
+    
     document.getElementById('display-topic-name').innerText = state.topicName || "Novo Tópico Recursal";
+    document.getElementById('display-process-number').innerText = state.processNumber || "Sem Processo";
     
     triggerSaveFeedback();
 }
@@ -57,15 +72,12 @@ function saveState() {
 function triggerSaveFeedback() {
     const activePanel = document.querySelector('.panel.active');
     if (!activePanel) return;
-    
     const statusEl = activePanel.querySelector('.local-save-status');
     if (!statusEl) return;
 
     statusEl.innerHTML = '<span class="saving-dot"></span> Salvando...';
     statusEl.classList.add('saving');
-
     clearTimeout(saveFeedbackTimeout);
-    
     saveFeedbackTimeout = setTimeout(() => {
         statusEl.innerHTML = '✓ Salvo';
         statusEl.classList.remove('saving');
@@ -76,13 +88,19 @@ function loadState() {
     const saved = localStorage.getItem('minuta_builder_data');
     if (saved) {
         state = JSON.parse(saved);
+        if(!state.processNumber) state.processNumber = ""; 
+        document.getElementById('input-process-number').value = state.processNumber;
         document.getElementById('input-topic-name').value = state.topicName || "";
         document.getElementById('editor-alegacoes').innerHTML = state.alegacoes || "";
         document.getElementById('editor-fundamentos').innerHTML = state.fundamentos || "";
         document.getElementById('editor-veredito').innerHTML = state.veredito || "";
         if(!state.diretrizes) state.diretrizes = [{ id: generateId(), content: "", intent: "fallback" }];
+        
+        document.getElementById('display-topic-name').innerText = state.topicName || "Novo Tópico Recursal";
+        document.getElementById('display-process-number').innerText = state.processNumber || "Sem Processo";
     }
     renderList();
+    if (typeof renderizarHistoricoDB === "function") renderizarHistoricoDB(); // Gatilho do novo DB
 }
 
 // --- NAVEGAÇÃO SEGURA ---
@@ -214,6 +232,7 @@ function buildExportPayload() {
     // Reconstrução limpa do String Liteteral, sem cortes arbitrários
     let payload = `<diretrizes_do_assessor>\n`;
     payload += `  <relatorio_do_conflito>\n`;
+    payload += `    <numero_processo>${state.processNumber || "NAO_INFORMADO"}</numero_processo>\n`;
     payload += `    <topico_recursal>${state.topicName || "Tópico não informado"}</topico_recursal>\n`;
     
     // Injeções Modulares de Texto Puro
@@ -334,10 +353,11 @@ MINUTA REDIGIDA ATÉ O MOMENTO
 >|${txtMinuta}|< 
 == FIM_MINUTA ==
 
-🎯 2. TÓPICO RECURSAL EM ANÁLISE 
-<topico_atual>
->|${txtTopico}|<
-</topico_atual> 
+🎯 2. METADADOS E TÓPICO RECURSAL EM ANÁLISE 
+<identificacao>
+    <numero_processo>>|${state.processNumber || "NAO_INFORMADO"}|<</numero_processo>
+    <topico_atual>>|${txtTopico}|<</topico_atual> 
+</identificacao> 
 
 🛑 3. PROTOCOLO DE ALINHAMENTO E CONTRADIÇÕES (CIRCUIT BREAKER)
 [Avalie o Pacote de Dados e as premissas. Se houver choque lógico (comandos vs provimento), NÃO REESCREVA O TEXTO. Interrompa e formule perguntas de alinhamento para o usuário.]
@@ -359,6 +379,132 @@ MINUTA REDIGIDA ATÉ O MOMENTO
     outputEl.textContent = promptMaster;
     outputEl.setAttribute('data-raw', promptMaster);
     document.getElementById('prompt-result-wrapper').style.display = 'block';
+}
+
+/* === NOVO MOTOR DE HISTÓRICO ASSÍNCRONO (INDEXED DB) E MODAL === */
+const DB_NAME = "JurisNotesDB";
+const STORE_NAME = "historyStore";
+
+function initDB(callback) {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = (e) => {
+        let db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: "id" });
+    };
+    request.onsuccess = (e) => callback(e.target.result);
+    request.onerror = (e) => console.error("Erro IndexedDB", e);
+}
+
+function salvarNoHistoricoDB() {
+    if (!state.processNumber && !state.topicName) return; 
+    initDB((db) => {
+        const transaction = db.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+        const registro = {
+            id: new Date().getTime(),
+            processo: state.processNumber || "Sem Processo",
+            topico: state.topicName || "Sem Tópico",
+            data: new Date().toLocaleString('pt-BR'),
+            estado_salvo: JSON.parse(JSON.stringify(state))
+        };
+        store.put(registro);
+        const reqCursor = store.openCursor(null, "prev");
+        let count = 0;
+        reqCursor.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor) {
+                count++;
+                if (count > 10) store.delete(cursor.primaryKey);
+                cursor.continue();
+            } else { renderizarHistoricoDB(); }
+        };
+    });
+}
+
+function renderizarHistoricoDB() {
+    initDB((db) => {
+        const transaction = db.transaction([STORE_NAME], "readonly");
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.getAll();
+        request.onsuccess = () => {
+            const container = document.getElementById('lista-historico');
+            if(!container) return;
+            let historico = request.result.sort((a,b) => b.id - a.id);
+            if (historico.length === 0) {
+                container.innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;">Nenhum trabalho salvo no banco de dados local.</div>`;
+                return;
+            }
+            container.innerHTML = historico.map(item => `
+                <div class="history-item" onclick="carregarDoHistoricoDB(${item.id})">
+                    <div class="history-info">
+                        <strong>${item.processo}</strong>
+                        <span>${item.topico} • ${item.data}</span>
+                    </div>
+                    <button class="btn-load-history">Restaurar</button>
+                </div>
+            `).join('');
+        };
+    });
+}
+
+function carregarDoHistoricoDB(id) {
+    initDB((db) => {
+        const transaction = db.transaction([STORE_NAME], "readonly");
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.get(id);
+        request.onsuccess = () => {
+            if (request.result) {
+                salvarNoHistoricoDB(); // Salva estado atual antes de sobrepor
+                localStorage.setItem('minuta_builder_data', JSON.stringify(request.result.estado_salvo));
+                loadState();
+                showToast(`Trabalho recuperado!`, "success");
+            }
+        };
+    });
+}
+
+function abrirModalNovoTopico() { document.getElementById('modal-confirmacao').classList.add('active'); }
+function fecharModal() { document.getElementById('modal-confirmacao').classList.remove('active'); }
+function confirmarNovoTopico() {
+    salvarNoHistoricoDB();
+    state.topicName = ""; state.alegacoes = ""; state.fundamentos = ""; state.veredito = "";
+    state.diretrizes = [{ id: generateId(), content: "", intent: "fallback" }];
+    document.getElementById('input-topic-name').value = "";
+    document.getElementById('editor-alegacoes').innerHTML = "";
+    document.getElementById('editor-fundamentos').innerHTML = "";
+    document.getElementById('editor-veredito').innerHTML = "";
+    saveState(); renderList(); fecharModal();
+    document.querySelector('[data-target="panel-processo"]').click();
+    setTimeout(() => document.getElementById('input-process-number').focus(), 100);
+    showToast("Área limpa com sucesso.", "success");
+}
+
+function exportarBackup() {
+    saveState(); salvarNoHistoricoDB();
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const numProc = state.processNumber ? state.processNumber.replace(/[^a-zA-Z0-9]/g, "") : "sem_processo";
+    const nomeTop = state.topicName ? state.topicName.replace(/\s+/g, "_").toLowerCase() : "sem_topico";
+    const a = document.createElement("a"); a.href = url; a.download = `${numProc}_${nomeTop}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    showToast("Backup exportado!", "success");
+}
+
+function importarBackup(event) {
+    const file = event.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const importedState = JSON.parse(e.target.result);
+            if (importedState && Array.isArray(importedState.diretrizes)) {
+                salvarNoHistoricoDB();
+                localStorage.setItem('minuta_builder_data', JSON.stringify(importedState));
+                loadState(); showToast("Backup importado com sucesso!", "success");
+            } else { showToast("Arquivo inválido.", "danger"); }
+        } catch (error) { showToast("Erro ao ler arquivo.", "danger"); }
+        event.target.value = "";
+    };
+    reader.readAsText(file);
 }
 
 // --- INICIALIZADORES E EVENTOS GERAIS (Final do Arquivo) ---

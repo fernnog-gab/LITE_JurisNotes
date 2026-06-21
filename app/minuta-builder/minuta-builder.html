@@ -8,7 +8,10 @@
 </head>
 <body class="home-body">
     <header>
-        <div id="display-topic-name" class="topic-display">Novo Tópico Recursal</div>
+        <div class="header-tags">
+            <div id="display-process-number" class="topic-display process-tag" title="Número do Processo">Sem Processo</div>
+            <div id="display-topic-name" class="topic-display" title="Nome do Tópico">Novo Tópico Recursal</div>
+        </div>
         <div class="status-pill">✓ Salvo localmente</div>
     </header>
 
@@ -18,8 +21,15 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
         </a>
 
+        <button class="nav-btn" onclick="abrirModalNovoTopico()" title="Gerar Novo Tópico (Limpar Tela)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+        </button>
+
         <div class="divider" style="margin-bottom: 16px;"></div>
 
+        <button class="nav-btn" data-target="panel-processo" title="Identificação do Processo Judicial">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h18"></path><path d="M12 2v20"></path><path d="M4 14l2-8 2 8"></path><path d="M16 14l2-8 2 8"></path><circle cx="12" cy="2" r="2"></circle></svg>
+        </button>
         <button class="nav-btn active" data-target="panel-config" title="Identificação do Tópico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
         <button class="nav-btn" data-target="panel-alegacoes" title="Alegações Recursais"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></button>
         <button class="nav-btn" data-target="panel-fundamentos" title="Fundamentos da Origem"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button>
@@ -51,10 +61,42 @@
                 <line x1="10" y1="14" x2="21" y2="3"></line>
             </svg>
         </button>
+
+        <div class="divider"></div>
+
+        <button class="nav-btn" onclick="exportarBackup()" title="Salvar Arquivo de Backup (.json)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+        </button>
+        <button class="nav-btn" onclick="document.getElementById('import-file-input').click()" title="Importar Backup (.json)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        </button>
+        <input type="file" id="import-file-input" accept=".json" style="display: none;" onchange="importarBackup(event)">
+
+        <button class="nav-btn" data-target="panel-historico" title="Histórico de Sessões Recentes">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        </button>
     </nav>
 
     <main>
         <!-- Painéis de Configuração Padrão -->
+        <div id="panel-processo" class="panel">
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div><h1 class="panel-title">Identificação do Processo</h1><p class="panel-desc">Vincule os metadados para orientar a IA.</p></div>
+                <div class="local-save-status">✓ Salvo</div>
+            </div>
+            <div class="editor-container" style="padding: 30px;">
+                <label style="display: block; margin-bottom: 10px; font-weight: 600;">Número do Processo (CNJ):</label>
+                <input type="text" id="input-process-number" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 18px; font-family: monospace;" placeholder="Ex: 0000000-00.0000.5.00.0000" oninput="aplicarMascaraCNJ(this); saveState();">
+            </div>
+        </div>
+
+        <div id="panel-historico" class="panel">
+            <div class="panel-header">
+                <h1 class="panel-title">Documentos Recentes</h1>
+                <p class="panel-desc">Recupere rapidamente os últimos trabalhos salvos (Armazenamento Seguro Local).</p>
+            </div>
+            <div id="lista-historico" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        </div>
         <div id="panel-config" class="panel active">
             <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div><h1 class="panel-title">Identificação do Tópico</h1></div>
@@ -163,6 +205,20 @@
             </div>
         </div>
     </main>
+
+    <!-- MODAL CONFIRMAÇÃO NOVO TÓPICO -->
+    <div id="modal-confirmacao" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-icon">⚖️</div>
+            <h2>Iniciar Novo Tópico?</h2>
+            <p>A área de trabalho atual será limpa e armazenada no histórico. Deseja prosseguir?</p>
+            <div class="modal-actions">
+                <button class="btn-modal-cancel" onclick="fecharModal()">Cancelar</button>
+                <button class="btn-modal-confirm" onclick="confirmarNovoTopico()">Sim, limpar tela</button>
+            </div>
+        </div>
+    </div>
+
     <script src="./minuta-builder.js"></script>
 </body>
 </html>

@@ -34,7 +34,18 @@ header {
     border-bottom: 1px solid rgba(255,255,255,0.1); color: white;
     display: flex; align-items: center; padding: 0 32px; justify-content: space-between;
 }
-.topic-display { font-weight: 700; font-size: 0.95rem; color: #111827; background-color: var(--primary-color); padding: 6px 16px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.header-tags { 
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap; max-width: 70%; 
+}
+.topic-display {
+    font-weight: 700; font-size: 0.95rem; color: #111827; background-color: var(--primary-color);
+    padding: 6px 16px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; max-width: 100%;
+}
+.process-tag { 
+    background-color: #cbd5e1; color: #0f172a; font-family: monospace; 
+}
 .status-pill { font-size: 11px; background: #ecfdf5; color: #065f46; padding: 4px 12px; border-radius: 12px; font-weight: 600; }
 
 .sidebar {
@@ -252,3 +263,34 @@ main { padding: 40px; overflow-y: auto; display: flex; justify-content: center; 
     cursor: pointer; font-weight: 600; transition: 0.2s;
 }
 .btn-primary:hover { opacity: 0.9; }
+
+/* --- MODAL DE CONFIRMAÇÃO --- */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(5px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10000; opacity: 0; visibility: hidden; transition: all 0.3s ease;
+}
+.modal-overlay.active { opacity: 1; visibility: visible; }
+.modal-content {
+    background: #1e293b; border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px; padding: 32px; width: 90%; max-width: 420px;
+    text-align: center; color: white; transform: scale(0.95); transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+.modal-overlay.active .modal-content { transform: scale(1); }
+.modal-icon { font-size: 44px; margin-bottom: 12px; }
+.modal-actions { display: flex; gap: 12px; justify-content: center; margin-top: 24px; }
+.btn-modal-cancel { background: transparent; border: 1px solid #475569; color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.btn-modal-confirm { background: var(--primary-color); border: none; color: #111827; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+
+/* --- HISTÓRICO --- */
+.history-item {
+    background: white; border: 1px solid var(--border-color); border-radius: 8px;
+    padding: 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+}
+.history-item:hover { border-color: var(--trt-blue); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+.history-info strong { display: block; font-family: monospace; font-size: 15px;}
+.history-info span { font-size: 13px; color: var(--text-muted); }
+.btn-load-history { background: #f1f5f9; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+.history-item:hover .btn-load-history { background: var(--trt-blue); color: white; }
