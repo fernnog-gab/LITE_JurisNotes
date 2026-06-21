@@ -65,8 +65,9 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
     
-    document.getElementById('drop-zone').style.display = 'none';
-    document.getElementById('curation-workspace').style.display = 'block';
+    document.getElementById('drop-zone').classList.add('is-hidden');
+    document.getElementById('top-back-container').classList.add('is-hidden');
+    document.getElementById('curation-workspace').classList.remove('is-hidden');
     
     // Reseta estado anterior antes do processamento do novo lote
     await destroyCurrentPDFView();
@@ -117,7 +118,11 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
     }
 
     if (pdfFiles.length > 0) {
-        activeFileSelect.style.display = pdfFiles.length > 1 ? 'block' : 'none';
+        if (pdfFiles.length > 1) {
+            activeFileSelect.classList.remove('is-hidden');
+        } else {
+            activeFileSelect.classList.add('is-hidden');
+        }
         setActivePDF(0);
     }
 });
@@ -441,14 +446,16 @@ async function destroyCurrentPDFView() {
 document.getElementById('btn-home').addEventListener('click', async () => {
     if(confirm("Deseja voltar à tela inicial? Todo o progresso de recortes não salvos será perdido.")) {
         await destroyCurrentPDFView();
-        document.getElementById('curation-workspace').style.display = 'none';
-        document.getElementById('drop-zone').style.display = 'flex';
+        
+        document.getElementById('curation-workspace').classList.add('is-hidden');
+        document.getElementById('drop-zone').classList.remove('is-hidden');
+        document.getElementById('top-back-container').classList.remove('is-hidden');
+        
         document.getElementById('file-input').value = ""; 
         renderSnippetsList();
         resetExtractionState();
     }
 });
-
 // ============================================================================
 // DIÁLOGO DE CLASSIFICAÇÃO (MODAL DINÂMICO MULTI-MODO)
 // ============================================================================

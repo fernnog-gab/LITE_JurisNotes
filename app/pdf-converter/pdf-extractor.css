@@ -8,12 +8,14 @@
 }
 
 :root {
-    --bg-color: #1a3a5c;          /* Azul institucional da home */
+    --bg-color: #1a3a5c;          
+    --bg-color-light: #264b73;    /* Novo: Tom de azul para áreas de destaque */
+    --bg-color-hover: #2e5a88;    /* Novo: Tom de azul para hover/interação */
     --surface-color: #ffffff;
     --text-main: #111827;
     --text-muted: #4b5563;
     --border-color: #d1d5db;
-    --primary-color: #FFD700;     /* Amarelo PDF */
+    --primary-color: #FFD700;     
     --primary-hover: #e6c200;
     --radius: 8px;
 }
@@ -70,14 +72,14 @@ body {
     border-radius: var(--radius);
     padding: 40px 20px;
     text-align: center;
-    background-color: var(--bg-color);
+    background-color: var(--bg-color-light);
     cursor: pointer;
-    transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.1s ease;
+    transition: all 0.2s ease;
 }
 
 .drop-zone:hover, .drop-zone.dragover {
     border-color: var(--primary-color);
-    background-color: #F0F4F4;
+    background-color: var(--bg-color-hover);
 }
 
 .drop-zone.dragover {
@@ -497,16 +499,79 @@ svg { flex-shrink: 0; }
     }
 }
 
-/* Ajuste no novo botão home (Casa) e setas */
+/* Botão Home Modular */
 .btn-home-module {
     color: var(--primary-color);
-    transition: 0.2s;
-    background: rgba(255, 215, 0, 0.1);
-    padding: 8px;
-    border-radius: 8px;
+    background: var(--bg-color);
+    border: 1px solid var(--primary-color);
+    transition: all 0.2s ease;
+    padding: 10px;
+    border-radius: var(--radius);
     display: flex;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.15);
 }
-.btn-home-module:hover { background: rgba(255, 215, 0, 0.2); transform: scale(1.05); }
+
+.btn-home-module:hover { 
+    background: var(--bg-color-light); 
+    transform: scale(1.05); 
+}
 
 /* SVG da dropzone forçado para amarelo */
 .icon-svg { stroke: var(--primary-color); }
+
+/* Novas Classes Semânticas da Toolbar (Workspace) */
+.toolbar-header {
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    margin-bottom: 15px; 
+    background: var(--bg-color); 
+    padding: 16px; 
+    border-radius: var(--radius); 
+    border: 1px solid var(--primary-color); 
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+.toolbar-group {
+    display: flex; 
+    align-items: center; 
+    gap: 12px; 
+    flex-wrap: wrap;
+}
+
+.btn-toolbar {
+    padding: 8px 12px; 
+    font-size: 14px; 
+    font-weight: bold; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+}
+
+.page-control-group {
+    display: flex; 
+    align-items: center; 
+    gap: 6px; 
+    font-size: 14px; 
+    font-weight: 500; 
+    margin: 0 10px; 
+    color: var(--surface-color);
+}
+
+.page-control-input {
+    width: 50px; 
+    text-align: center; 
+    padding: 6px; 
+    border: 1px solid var(--border-color); 
+    border-radius: 4px; 
+    background: var(--surface-color); 
+    color: var(--text-main);
+}
+
+.zoom-indicator {
+    font-size: 14px; 
+    font-weight: 600; 
+    width: 45px; 
+    text-align: center; 
+    color: var(--surface-color);
+}
