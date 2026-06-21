@@ -381,10 +381,10 @@ main { padding: 40px; overflow-y: auto; display: flex; justify-content: center; 
 
 .help-item p {
     font-size: 13px;
-    color: #cbd5e1;
+    color: #475569; /* Cinza escuro elegante para melhor leitura no fundo claro */
     line-height: 1.4;
     margin: 0;
 }
 
 .help-scroll::-webkit-scrollbar { width: 6px; }
-.help-scroll::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 4px; }
+.help-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; } /* Scrollbar cinza claro */
