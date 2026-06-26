@@ -318,40 +318,96 @@ tooltip.addEventListener('click', async () => {
     }
 });
 
+// ============================================================================
+// CONTROLADOR DE UI: PROGRESSO DE EXTRAÇÃO
+// ============================================================================
+const ExtractionUI = {
+    overlayElement: null,
+    progressTextElement: null,
+
+    show: function(targetContainerId) {
+        const container = document.getElementById(targetContainerId);
+        if (!container) return;
+
+        if (this.overlayElement) this.hide();
+
+        this.overlayElement = document.createElement('div');
+        this.overlayElement.className = 'extracting-overlay';
+        
+        this.overlayElement.innerHTML = `
+            <div class="loading-card">
+                <div class="spinner"></div>
+                <h3 class="loading-title">Convertendo Documento</h3>
+                <p class="loading-progress" id="pdf-progress-text">Iniciando leitura...</p>
+            </div>
+        `;
+
+        container.appendChild(this.overlayElement);
+        
+        this.progressTextElement = this.overlayElement.querySelector('#pdf-progress-text');
+
+        void this.overlayElement.offsetWidth; // Força Reflow para animação
+        this.overlayElement.classList.add('show');
+    },
+
+    update: function(currentPage, totalPages) {
+        if (!this.progressTextElement) return;
+        this.progressTextElement.textContent = `Processando página ${currentPage} de ${totalPages}...`;
+    },
+
+    hide: function() {
+        if (!this.overlayElement) return;
+        
+        this.overlayElement.classList.remove('show');
+        
+        setTimeout(() => {
+            if (this.overlayElement && this.overlayElement.parentNode) {
+                this.overlayElement.parentNode.removeChild(this.overlayElement);
+                this.overlayElement = null;
+                this.progressTextElement = null;
+            }
+        }, 300);
+    }
+};
+
 // Executa varredura profunda de páginas delimitadas nos bastidores (background)
 async function processCrossPageExtraction(topicName) {
-    const panel = document.getElementById('snippets-panel');
-    const overlay = document.createElement('div');
-    overlay.className = 'extracting-overlay';
-    overlay.textContent = "Lendo páginas em background...";
-    panel.appendChild(overlay);
+    ExtractionUI.show('snippets-panel');
 
     let fullExtractedText = "";
+    const startPage = extractState.start.page;
+    const endPage = extractState.end.page;
+    const totalPages = endPage - startPage + 1;
+    let current = 1;
 
     try {
-        for (let i = extractState.start.page; i <= extractState.end.page; i++) {
+        for (let i = startPage; i <= endPage; i++) {
+            ExtractionUI.update(current, totalPages);
+
             const tempPage = await pdfDoc.getPage(i);
             const textContent = await tempPage.getTextContent();
             let pageText = textContent.items.map(item => item.str).join(' ').replace(/\s+/g, ' '); 
 
-            if (extractState.start.page === extractState.end.page) {
+            if (startPage === endPage) {
                 const idxStart = pageText.indexOf(extractState.start.text);
                 const idxEnd = pageText.indexOf(extractState.end.text) + extractState.end.text.length;
                 if (idxStart !== -1 && idxEnd !== -1) fullExtractedText = pageText.substring(idxStart, idxEnd);
                 else fullExtractedText = pageText; // Fallback parcial
             } 
-            else if (i === extractState.start.page) {
+            else if (i === startPage) {
                 const idxStart = pageText.indexOf(extractState.start.text);
                 fullExtractedText += idxStart !== -1 ? pageText.substring(idxStart) : pageText;
                 fullExtractedText += " \n\n ";
             } 
-            else if (i === extractState.end.page) {
+            else if (i === endPage) {
                 const idxEnd = pageText.indexOf(extractState.end.text) + extractState.end.text.length;
                 fullExtractedText += idxEnd !== -1 ? pageText.substring(0, idxEnd) : pageText;
             } 
             else {
                 fullExtractedText += pageText + " \n\n ";
             }
+            
+            current++;
         }
 
         // Salva os snippets exclusivamente sob a lista de dados do arquivo ativo
@@ -362,7 +418,7 @@ async function processCrossPageExtraction(topicName) {
         console.error("Erro na extração em background:", err);
         alert("Falha na extração entre páginas.");
     } finally {
-        overlay.remove();
+        ExtractionUI.hide();
         resetExtractionState();
     }
 }
@@ -690,20 +746,23 @@ document.getElementById('btn-extract-full').addEventListener('click', async () =
     const confirmed = await openNamingModal('batch');
     if (!confirmed) return;
 
-    const panel = document.getElementById('snippets-panel');
-    const overlay = document.createElement('div');
-    overlay.className = 'extracting-overlay';
-    overlay.textContent = "Processando arquivos do Lote...";
-    panel.appendChild(overlay);
+    ExtractionUI.show('snippets-panel');
 
     try {
         const zip = new JSZip();
+        
+        // Conta o total global de páginas do lote para feedback coeso
+        let totalLotePages = 0;
+        pdfFiles.forEach(f => totalLotePages += f.pdfDoc.numPages);
+        let currentLotePage = 1;
 
         for (let idx = 0; idx < pdfFiles.length; idx++) {
             const pdfObj = pdfFiles[idx];
             let documentContent = "";
 
             for (let pageNum = 1; pageNum <= pdfObj.pdfDoc.numPages; pageNum++) {
+                ExtractionUI.update(currentLotePage, totalLotePages);
+
                 const pageInstance = await pdfObj.pdfDoc.getPage(pageNum);
                 const textNode = await pageInstance.getTextContent();
                 const pageText = textNode.items.map(item => item.str).join(' ');
@@ -714,6 +773,8 @@ document.getElementById('btn-extract-full').addEventListener('click', async () =
                 if (pageNum % 4 === 0) {
                     await new Promise(resolve => setTimeout(resolve, 0));
                 }
+                
+                currentLotePage++;
             }
 
             const cleanFileName = formatOutputFilename(pdfObj, false);
@@ -730,6 +791,6 @@ document.getElementById('btn-extract-full').addEventListener('click', async () =
         console.error("Falha ao processar a extração em lote:", err);
         alert("Ocorreu um erro no processamento das páginas em lote.");
     } finally {
-        overlay.remove();
+        ExtractionUI.hide();
     }
 });
