@@ -669,3 +669,7 @@ svg { flex-shrink: 0; }
     background-color: var(--bg-color-hover);
     transform: translateY(-2px);
 }
+
+.btn-home-absolute.is-hidden {
+    display: none !important;
+}
